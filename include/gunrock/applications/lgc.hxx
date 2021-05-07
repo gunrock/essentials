@@ -21,38 +21,31 @@ template <typename vertex_t, typename weight_t>
 struct param_t {
   graph::vertex_pair_t<vertex_t> pair;
 
-  weight_t eps;            // Tolerance for convergence
-  weight_t alpha;          // Parameterizes conductance/size of output cluster
-  weight_t rho;            // Parameterizes conductance/size of output cluster
-  int maximum_iterations;  // Maximum number of iterations
+  weight_t eps;    // Tolerance for convergence
+  weight_t alpha;  // Parameterizes conductance/size of output cluster
+  weight_t rho;    // Parameterizes conductance/size of output cluster
 
-  param_t(vertex_t source,
-          vertex_t source_neighbor,
+  param_t(vertex_t _source,
+          vertex_t _source_neighbor,
           weight_t _eps,
           weight_t _alpha,
           weight_t _rho)
-      : pair.source(_source),
-      pair.destination(_source_neighbor), eps(_eps), alpha(_alpha), rho(_rho) {}
+      : eps(_eps), alpha(_alpha), rho(_rho) {
+    pair.source = _source;
+    pair.destination = _source_neighbor;
+  }
 };
 
 template <typename weight_t>
 struct result_t {
-  weight_t* q;  // Truncated z-values && also the output.
-  result_t(weight_t* _q) : q(_q) {}
+  weight_t* p;  // Truncated z-values && also the output.
+  result_t(weight_t* _p) : p(_p) {}
 };
 
 template <typename graph_t, typename param_type, typename result_type>
 struct problem_t : gunrock::problem_t<graph_t> {
   param_type param;
   result_type result;
-
-  problem_t(graph_t& G,
-            param_type& _param,
-            result_type& _result,
-            std::shared_ptr<cuda::multi_context_t> _context)
-      : gunrock::problem_t<graph_t>(G, _context),
-        param(_param),
-        result(_result) {}
 
   using vertex_t = typename graph_t::vertex_type;
   using edge_t = typename graph_t::edge_type;
@@ -61,10 +54,23 @@ struct problem_t : gunrock::problem_t<graph_t> {
   thrust::device_vector<weight_t> gradient;  // Gradient values
   thrust::device_vector<weight_t> y;         // Intermediate quantity
   thrust::device_vector<weight_t> z;         // Intermediate quantity
+  thrust::device_vector<weight_t> q;         // Truncated z-values
   thrust::device_vector<int> visited;        // track
 
-  thrust::device_vector<int> grad_scale(1, 0);
-  thrust::device_vector<weight_t> grad_scale_value(1, (weight_t)0);
+  thrust::device_vector<int> grad_scale;
+  thrust::device_vector<weight_t> grad_scale_value;
+
+  int num_ref_nodes = 1;
+
+  problem_t(graph_t& G,
+            param_type& _param,
+            result_type& _result,
+            std::shared_ptr<cuda::multi_context_t> _context)
+      : gunrock::problem_t<graph_t>(G, _context),
+        param(_param),
+        result(_result),
+        grad_scale(1, 0),
+        grad_scale_value(1, (weight_t)0.0f) {}
 
   void init() override {
     auto g = this->get_graph();
@@ -86,9 +92,8 @@ struct problem_t : gunrock::problem_t<graph_t> {
     thrust::fill_n(policy, gradient.begin(), n_vertices, weight_t(0));
     thrust::fill_n(policy, y.begin(), n_vertices, weight_t(0));
     thrust::fill_n(policy, z.begin(), n_vertices, weight_t(0));
+    thrust::fill_n(policy, q.begin(), n_vertices, weight_t(0));
     thrust::fill_n(policy, visited.begin(), n_vertices, 0);
-
-    thrust::fill_n(policy, this->result.q, n_vertices, weight_t(0));
   }
 };
 
@@ -115,11 +120,12 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     auto f = E->get_input_frontier();
 
     auto n_vertices = G.get_number_of_vertices();
-    auto q = P->result.q;
 
     auto gradient = P->gradient.data().get();
     auto y = P->y.data().get();
     auto z = P->z.data().get();
+    auto q = P->q.data().get();
+
     auto visited = P->visited.data().get();
 
     auto alpha = P->param.alpha;
@@ -127,15 +133,17 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
     auto pair = P->param.pair;
 
-    int num_ref_nodes = 1;
+    auto iteration = this->iteration;
 
     auto policy = this->context->get_context(0)->execution_policy();
+
+    auto num_ref_nodes = P->num_ref_nodes;
 
     // compute operation
     auto compute_op = [=] __host__ __device__(vertex_t const& v) {
       // ignore the neighbor on the first iteration
       if ((iteration == 0) && (v == pair.destination))
-        return;
+        return gunrock::numeric_limits<vertex_t>::invalid();
 
       // Compute degrees
       auto degree = G.get_number_of_neighbors(v);
@@ -152,7 +160,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
       z[v] = y[v] - gradient[v];
 
       if (z[v] == 0)
-        return;
+        return gunrock::numeric_limits<vertex_t>::invalid();
 
       auto q_old = q[v];
       auto thresh = rho * alpha * degree_sqrt;
@@ -174,8 +182,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
       visited[v] = false;
       gradient[v] = y[v] * (1.0 + alpha) / 2;
-
-      return 0;  // ignored.
+      return gunrock::numeric_limits<vertex_t>::invalid();
     };
 
     thrust::transform(policy, f->begin(), f->end(),
@@ -215,7 +222,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     auto f = E->get_input_frontier();
 
     auto n_vertices = G.get_number_of_vertices();
-
+    auto num_ref_nodes = P->num_ref_nodes;
     auto gradient = P->gradient.data().get();
 
     auto alpha = P->param.alpha;
@@ -223,10 +230,14 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     auto eps = P->param.eps;
     auto pair = P->param.pair;
 
-    auto q = P->result.q;
+    auto q = P->q.data().get();
+    auto p = P->result.p;
 
-    auto d_grad_scale = P->grad_scale.data();
-    auto d_grad_scale_value = P->grad_scale_value.data();
+    auto grad_scale = P->grad_scale;
+    auto grad_scale_value = P->grad_scale_value;
+
+    auto d_grad_scale = grad_scale.data().get();
+    auto d_grad_scale_value = grad_scale_value.data().get();
 
     weight_t grad_thresh = rho * alpha * (1 + eps);
 
@@ -258,11 +269,13 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     if (!(check_grad_scale[0])) {
       auto n_vertices = G.get_number_of_vertices();
       auto scale_op = [=] __device__ __host__(const vertex_t& v) {
-        return abs(q[v] * sqrt((weight_t)G.get_number_of_neighbors(v)));
+        weight_t p = abs(q[v] * sqrt((weight_t)G.get_number_of_neighbors(v)));
+        printf("%lf\n", p);
+        return p;
       };
 
       thrust::transform(policy, thrust::counting_iterator<vertex_t>(0),
-                        thrust::counting_iterator<vertex_t>(n_vertices), q,
+                        thrust::counting_iterator<vertex_t>(n_vertices), p,
                         scale_op);
       return true;
     }
@@ -277,9 +290,9 @@ float run(graph_t& G,
           typename graph_t::vertex_type source,
           typename graph_t::vertex_type source_neighbor,
           typename graph_t::weight_type eps,
-          typename graph_t::weight_type alpha,
-          typename graph_t::weight_type rho,
-          typename graph_t::weight_type* q  // Output
+          typename graph_t::weight_type phi,
+          typename graph_t::weight_type vol,
+          typename graph_t::weight_type* p  // Output
 ) {
   // <user-defined>
   using vertex_t = typename graph_t::vertex_type;
@@ -288,8 +301,24 @@ float run(graph_t& G,
   using param_type = param_t<vertex_t, weight_t>;
   using result_type = result_t<weight_t>;
 
+  // Calculate alpha
+  weight_t half_num_edges = G.get_number_of_edges() / 2.0f;
+  weight_t log_num_edges = log2(half_num_edges);
+  weight_t alpha = pow(phi, 2) / (255.0f * log(100.0f * sqrt(half_num_edges)));
+
+  // Calculate rho
+  weight_t rho = 0.0f;
+  if (1.0f + log2((weight_t)vol) > log_num_edges) {
+    rho = log_num_edges;
+  } else {
+    rho = 1.0f + log2((weight_t)vol);
+  }
+  rho = pow(2.0f, rho);
+  rho = 1.0 / rho;
+  rho *= 1.0 / (48.0 * log_num_edges);
+
   param_type param(source, source_neighbor, eps, alpha, rho);
-  result_type result(q);
+  result_type result(p);
   // </user-defined>
 
   // <boiler-plate>

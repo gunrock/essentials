@@ -14,7 +14,7 @@ void test_lgc(int num_arguments, char** argument_array) {
 
   using vertex_t = int;
   using edge_t = int;
-  using weight_t = float;
+  using weight_t = double;
 
   using csr_t =
       format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
@@ -52,8 +52,23 @@ void test_lgc(int num_arguments, char** argument_array) {
 
   srand(time(NULL));
 
-  weight_t alpha = 0.85;
-  weight_t tol = 1e-6;
+  weight_t phi = 0.5f;
+  weight_t eps = 1e-2;
+  weight_t vol = 40.0;
+
+  vertex_t source = 0;
+
+  // Hack to copy the last neighbor of the source.
+  thrust::device_vector<vertex_t> destination_vertex(1);
+  auto copy_neighbor = [=] __device__ __host__(vertex_t & v) {
+    auto neighbors = G.get_number_of_neighbors(source);
+    auto start_edge = G.get_starting_edge(source);
+    return G.get_destination_vertex(start_edge + neighbors);
+  };
+  thrust::transform(thrust::device, destination_vertex.begin(),
+                    destination_vertex.end(), destination_vertex.begin(),
+                    copy_neighbor);
+  thrust::host_vector<vertex_t> source_neighbor = destination_vertex;
 
   vertex_t n_vertices = G.get_number_of_vertices();
   thrust::device_vector<weight_t> p(n_vertices);
@@ -61,12 +76,13 @@ void test_lgc(int num_arguments, char** argument_array) {
   // --
   // GPU Run
 
-  float gpu_elapsed = gunrock::pr::run(G, alpha, tol, p.data().get());
+  float gpu_elapsed = gunrock::lgc::run(G, source, source_neighbor[0], eps, phi,
+                                        vol, p.data().get());
 
   // --
   // Log + Validate
 
-  std::cout << "GPU p[:40] = ";
+  std::cout << "GPU PageRank Nibble[:40] = ";
   gunrock::print::head<weight_t>(p, 40);
   std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
 }
