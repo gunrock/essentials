@@ -57,9 +57,6 @@ struct problem_t : gunrock::problem_t<graph_t> {
   thrust::device_vector<weight_t> q;         // Truncated z-values
   thrust::device_vector<int> visited;        // track
 
-  thrust::device_vector<int> grad_scale;
-  thrust::device_vector<weight_t> grad_scale_value;
-
   int num_ref_nodes = 1;
 
   problem_t(graph_t& G,
@@ -68,9 +65,7 @@ struct problem_t : gunrock::problem_t<graph_t> {
             std::shared_ptr<cuda::multi_context_t> _context)
       : gunrock::problem_t<graph_t>(G, _context),
         param(_param),
-        result(_result),
-        grad_scale(1, 0),
-        grad_scale_value(1, (weight_t)0.0f) {}
+        result(_result) {}
 
   void init() override {
     auto g = this->get_graph();
@@ -89,10 +84,10 @@ struct problem_t : gunrock::problem_t<graph_t> {
     auto g = this->get_graph();
     auto n_vertices = g.get_number_of_vertices();
 
-    thrust::fill_n(policy, gradient.begin(), n_vertices, weight_t(0));
-    thrust::fill_n(policy, y.begin(), n_vertices, weight_t(0));
-    thrust::fill_n(policy, z.begin(), n_vertices, weight_t(0));
-    thrust::fill_n(policy, q.begin(), n_vertices, weight_t(0));
+    thrust::fill_n(policy, gradient.begin(), n_vertices, weight_t(0.0f));
+    thrust::fill_n(policy, y.begin(), n_vertices, weight_t(0.0f));
+    thrust::fill_n(policy, z.begin(), n_vertices, weight_t(0.0f));
+    thrust::fill_n(policy, q.begin(), n_vertices, weight_t(0.0f));
     thrust::fill_n(policy, visited.begin(), n_vertices, 0);
   }
 };
@@ -140,15 +135,23 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     auto num_ref_nodes = P->num_ref_nodes;
 
     // compute operation
-    auto compute_op = [=] __host__ __device__(vertex_t const& v) {
+    auto compute_op = [=] __host__ __device__(vertex_t v) {
+      printf("v = %i\n", v);
+
+      if (!gunrock::util::limits::is_valid(v))
+        return gunrock::numeric_limits<vertex_t>::invalid();
+
       // ignore the neighbor on the first iteration
       if ((iteration == 0) && (v == pair.destination))
         return gunrock::numeric_limits<vertex_t>::invalid();
 
       // Compute degrees
       auto degree = G.get_number_of_neighbors(v);
-      auto degree_sqrt = sqrt((weight_t)degree);
-      auto inv_degree_sqrt = 1.0 / degree_sqrt;
+      weight_t degree_sqrt = sqrt((weight_t)degree);
+      weight_t inv_degree_sqrt = 1.0 / degree_sqrt;
+
+      printf("degree_sqrt, inv_degree_sqrt, degree = %lf, %lf, %i\n",
+             degree_sqrt, inv_degree_sqrt, degree);
 
       // this is at end in original implementation, but works
       // here after the first iteration (+ have to adjust for
@@ -158,29 +161,32 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
       }
 
       z[v] = y[v] - gradient[v];
+      printf("gradient[v] = %lf\n", gradient[v]);
 
       if (z[v] == 0)
         return gunrock::numeric_limits<vertex_t>::invalid();
 
-      auto q_old = q[v];
-      auto thresh = rho * alpha * degree_sqrt;
+      weight_t q_old = q[v];
+      weight_t thresh = rho * alpha * degree_sqrt;
 
       if (z[v] >= thresh) {
         q[v] = z[v] - thresh;
       } else if (z[v] <= -thresh) {
         q[v] = z[v] + thresh;
       } else {
-        q[v] = (weight_t)0;
+        q[v] = (weight_t)0.0f;
       }
+
+      printf("q[v] = %lf\n", q[v]);
 
       if (iteration == 0) {
         y[v] = q[v];
       } else {
-        auto beta = (1 - sqrt(alpha)) / (1 + sqrt(alpha));
+        weight_t beta = (1 - sqrt(alpha)) / (1 + sqrt(alpha));
         y[v] = q[v] + beta * (q[v] - q_old);
       }
 
-      visited[v] = false;
+      visited[v] = 0;
       gradient[v] = y[v] * (1.0 + alpha) / 2;
       return gunrock::numeric_limits<vertex_t>::invalid();
     };
@@ -233,8 +239,8 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     auto q = P->q.data().get();
     auto p = P->result.p;
 
-    auto grad_scale = P->grad_scale;
-    auto grad_scale_value = P->grad_scale_value;
+    thrust::device_vector<int> grad_scale(1, 0);
+    thrust::device_vector<weight_t> grad_scale_value(1, (weight_t)0.0f);
 
     auto d_grad_scale = grad_scale.data().get();
     auto d_grad_scale_value = grad_scale_value.data().get();
@@ -242,7 +248,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     weight_t grad_thresh = rho * alpha * (1 + eps);
 
     auto convergence_op = [=] __host__ __device__(vertex_t const& v) {
-      weight_t v_dn_sqrt = 1.0 / sqrt((weight_t)G.get_number_of_neighbors(v));
+      weight_t v_dn_sqrt = 1.0f / sqrt((weight_t)G.get_number_of_neighbors(v));
       weight_t val = gradient[v];
 
       if (v == pair.source)
@@ -263,20 +269,21 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
                       thrust::make_discard_iterator(), convergence_op);
 
     thrust::host_vector<int> check_grad_scale = grad_scale;
-    thrust::host_vector<weight_t> check_grad_scale_value = grad_scale_value;
+    // thrust::host_vector<weight_t> check_grad_scale_value = grad_scale_value;
 
     // gradient too small:: converged.
-    if (!(check_grad_scale[0])) {
-      auto n_vertices = G.get_number_of_vertices();
-      auto scale_op = [=] __device__ __host__(const vertex_t& v) {
-        weight_t p = abs(q[v] * sqrt((weight_t)G.get_number_of_neighbors(v)));
-        printf("%lf\n", p);
-        return p;
+    if (!(check_grad_scale[0]) && this->iteration == 100) {
+      auto scale_op = [=] __device__(vertex_t const& v) -> void {
+        p[v] = abs(q[v] * sqrt((weight_t)G.get_number_of_neighbors(v)));
+        printf("%lf, %lf, %lf\n", p[v], q[v],
+               sqrt((weight_t)G.get_number_of_neighbors(v)));
       };
 
-      thrust::transform(policy, thrust::counting_iterator<vertex_t>(0),
-                        thrust::counting_iterator<vertex_t>(n_vertices), p,
-                        scale_op);
+      operators::parallel_for::execute<operators::parallel_for_each_t::vertex>(
+          G,         // graph
+          scale_op,  // lambda function
+          context    // context
+      );
       return true;
     }
 
@@ -302,20 +309,13 @@ float run(graph_t& G,
   using result_type = result_t<weight_t>;
 
   // Calculate alpha
-  weight_t half_num_edges = G.get_number_of_edges() / 2.0f;
-  weight_t log_num_edges = log2(half_num_edges);
-  weight_t alpha = pow(phi, 2) / (255.0f * log(100.0f * sqrt(half_num_edges)));
+  weight_t num_edges = G.get_number_of_edges();
+  weight_t log_num_edges = log2(num_edges);
+  weight_t alpha = pow(phi, 2) / (255.0f * log(100.0f * sqrt(num_edges)));
 
   // Calculate rho
-  weight_t rho = 0.0f;
-  if (1.0f + log2((weight_t)vol) > log_num_edges) {
-    rho = log_num_edges;
-  } else {
-    rho = 1.0f + log2((weight_t)vol);
-  }
-  rho = pow(2.0f, rho);
-  rho = 1.0 / rho;
-  rho *= 1.0 / (48.0 * log_num_edges);
+  weight_t rho = 1 / (pow(2, min(1 + log2(vol), log_num_edges)));
+  rho *= (1.0 / (48.0 * log_num_edges));
 
   param_type param(source, source_neighbor, eps, alpha, rho);
   result_type result(p);

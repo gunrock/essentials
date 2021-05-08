@@ -69,6 +69,8 @@ void test_lgc(int num_arguments, char** argument_array) {
                     destination_vertex.end(), destination_vertex.begin(),
                     copy_neighbor);
   thrust::host_vector<vertex_t> source_neighbor = destination_vertex;
+  std::cout << "source, neighbor = " << source << ", " << source_neighbor[0]
+            << std::endl;
 
   vertex_t n_vertices = G.get_number_of_vertices();
   thrust::device_vector<weight_t> p(n_vertices);
