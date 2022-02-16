@@ -136,7 +136,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     };
 
     // Execute advance operator on the provided lambda
-    operators::advance::execute<operators::load_balance_t::block_mapped>(
+    operators::advance::execute<operators::load_balance_t::merge_path_v2>(
         G, E, shortest_path, context);
 
     // Execute filter operator on the provided lambda
@@ -149,7 +149,6 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     // // operators::uniquify::execute<operators::uniquify_algorithm_t::unique>(
     // // E, context, best_effort_uniquification);
   }
-
 };  // struct enactor_t
 
 template <typename graph_t>

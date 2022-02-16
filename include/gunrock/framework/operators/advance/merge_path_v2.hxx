@@ -16,6 +16,8 @@
 
 #include <gunrock/framework/operators/configs.hxx>
 
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
 #include <thrust/binary_search.h>
 #include <thrust/iterator/counting_iterator.h>
 
@@ -74,6 +76,7 @@ __global__ void merge_path_v2_kernel(graph_t G,
                                      frontier_t input,
                                      frontier_t output,
                                      work_tiles_t* segments,
+                                     work_tiles_t* total_nnzs,
                                      std::size_t num_merge_tiles) {
   using type_t = typename frontier_t::type_t;
   using offset_t = typename frontier_t::offset_t;
@@ -164,17 +167,18 @@ __global__ void merge_path_v2_kernel(graph_t G,
     if (tile_nonzeros[nz_idx] < row_end_offset) {
       // Move down (accumulate)
       bool cond = op(source, neighbor, edge, weight);
-      printf("%d %d (%d, %d) %f\n", (int)source, (int)neighbor, (int)edge,
-             (int)nz_idx, (float)weight);
+      // printf("%d %d (%d, %d) %f\n", (int)source, (int)neighbor, (int)edge,
+      //        (int)nz_idx, (float)weight);
 
       if (output_type != advance_io_type_t::none) {
-        // std::size_t out_idx = ;
-        // type_t element = (cond && neighbor != source)
-        //                      ? neighbor
-        //                      : gunrock::numeric_limits<type_t>::invalid();
-        // output.set_element_at(element, out_idx);
+        auto out_idx = math::atomic::add(&total_nnzs[0], (work_tiles_t)1);
+        type_t element = (cond && neighbor != source)
+                             ? neighbor
+                             : gunrock::numeric_limits<type_t>::invalid();
+        printf("output[%d] is %d (%d == %d)\n", (int)out_idx, (int)source,
+               (int)neighbor, (int)element);
+        output.set_element_at(element, out_idx);
       }
-
       ++nz_idx;
     } else {
       // Move right (reset)
@@ -197,9 +201,25 @@ void execute(graph_t& G,
              frontier_t& output,
              work_tiles_t& segments,
              cuda::standard_context_t& context) {
-  auto size_of_output = compute_output_offsets(
-      G, &input, segments, context,
-      (input_type == advance_io_type_t::graph) ? true : false);
+  using edge_t = typename graph_t::edge_type;
+  edge_t size_of_output = 0;
+
+  if constexpr (output_type != advance_io_type_t::none) {
+    size_of_output = compute_output_offsets(
+        G, &input, segments, context,
+        (input_type == advance_io_type_t::graph) ? true : false);
+    // If output frontier is empty, resize and return.
+    if (size_of_output <= 0) {
+      output.set_number_of_elements(0);
+      return;
+    }
+
+    /// @todo Resize the output (inactive) buffer to the new size.
+    /// Can be hidden within the frontier struct.
+    if (output.get_capacity() < size_of_output)
+      output.reserve(size_of_output);
+    output.set_number_of_elements(size_of_output);
+  }
 
   std::size_t num_elements = (input_type == advance_io_type_t::graph)
                                  ? G.get_number_of_vertices()
@@ -207,7 +227,7 @@ void execute(graph_t& G,
 
   // Kernel configuration.
   constexpr std::size_t num_threads = 128;
-  constexpr std::size_t items_per_thread = 1;
+  constexpr std::size_t items_per_thread = 5;
 
   // Tile size of merge path.
   constexpr std::size_t merge_tile_size = num_threads * items_per_thread;
@@ -219,15 +239,23 @@ void execute(graph_t& G,
   std::size_t num_merge_tiles =
       math::divide_round_up(num_merge_items, merge_tile_size);
 
-  dim3 grid(num_merge_tiles, num_merge_tiles, 1);
+  int max_dim_x;
+  cudaDeviceGetAttribute(&max_dim_x, cudaDevAttrMaxGridDimX, 0);
+  dim3 grid_size(min((int)num_merge_tiles, max_dim_x),
+                 math::divide_round_up((int)num_merge_tiles, max_dim_x), 1);
 
+  std::cout << "Size of output: " << size_of_output << std::endl;
+
+  using type_t = typename work_tiles_t::value_type;
   // Launch kernel.
+  thrust::device_vector<type_t> total_nnzs(1);
   merge_path_v2_kernel<items_per_thread, num_threads, merge_tile_size,
                        input_type, output_type>
-      <<<grid, num_threads, 0, context.stream()>>>(
-          G, op, input, output, segments.data().get(), num_merge_tiles);
-
+      <<<grid_size, num_threads, 0, context.stream()>>>(
+          G, op, input, output, segments.data().get(), total_nnzs.data().get(),
+          num_merge_tiles);
   context.synchronize();
+  output.print();
 }
 }  // namespace merge_path_v2
 }  // namespace advance
