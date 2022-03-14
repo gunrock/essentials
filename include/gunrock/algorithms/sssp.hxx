@@ -136,7 +136,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     };
 
     // Execute advance operator on the provided lambda
-    operators::advance::execute<operators::load_balance_t::merge_path_v2>(
+    operators::advance::execute<operators::load_balance_t::variance_sort>(
         G, E, shortest_path, context);
 
     // Execute filter operator on the provided lambda

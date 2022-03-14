@@ -36,6 +36,7 @@ enum load_balance_t {
   merge_path,     /// Merrill & Garland (SpMV):: ModernGPU
   merge_path_v2,  /// Merrill & Garland (SpMV):: CUSTOM
   work_stealing,  /// (wip) <cite>
+  variance_sort,  /// (wip) Gate et al. (SpMM)
 };
 
 /**
