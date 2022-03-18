@@ -36,8 +36,9 @@ namespace gunrock {
 	auto make_keys = [=]__device__(int const& tid, int const& bid) {
 	  if(tid < M)
 	    pk[I[tid]] = pk[I[tid]] > tid ? tid : pk[I[tid]];
-	  else
-	    pk[J[tid]] = pk[J[tid]] > tid ? tid : pk[J[tid]];
+	  else{
+	    t = tid-M;
+	    pk[J[t]] = pk[J[t]] > t  ? t : pk[J[t]];
 	};
 	
 	auto make_zperm = [=]__device__(int const& tid, int const& bid) {
@@ -49,10 +50,10 @@ namespace gunrock {
 	  launch_box_t<launch_params_dynamic_grid_t<fallback, dim3_t<256>, 3>>;
 	launch_t l;
 	
-	l.launch_blocked(context,make_keys,(std::size_t)M);
+	l.launch_blocked(context,make_keys,2 * M);
 	context.synchronize();
 
-	l.launch_blocked(context,make_zperm,(std::size_t)N);
+	l.launch_blocked(context,make_zperm,N);
 	context.synchronize();
 
 	zp.erase(thrust::remove_if(zp.begin(), zp.end(), is_pad()),zp.end());
@@ -70,10 +71,10 @@ namespace gunrock {
 	  rJ[tid] = izp[rJ[tid]];
 	};
 
-	l.launch_blocked(context,inverse,(std::size_t)N);
+	l.launch_blocked(context,inverse,N);
 	context.synchronize();
 
-	l.launch_blocked(context,permute,(std::size_t)N);
+	l.launch_blocked(context,permute,N);
 	context.synchronize();
 
       }
