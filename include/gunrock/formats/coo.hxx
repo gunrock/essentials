@@ -28,6 +28,15 @@ struct coo_t {
   vector_t<index_t, space> column_indices;  // J
   vector_t<value_t, space> nonzero_values;  // V
 
+  template <typename _coo_t>
+  coo_t(const _coo_t& rhs)
+      : number_of_rows(rhs.number_of_rows),
+        number_of_columns(rhs.number_of_columns),
+        number_of_nonzeros(rhs.number_of_nonzeros),
+        row_indices(rhs.row_indices),
+        column_indices(rhs.column_indices),
+        nonzero_values(rhs.nonzero_values) {}
+  
   coo_t()
       : number_of_rows(0),
         number_of_columns(0),

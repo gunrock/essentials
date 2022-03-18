@@ -1,5 +1,6 @@
 #include <gunrock/algorithms/spmv.hxx>
 #include <gunrock/algorithms/generate/random.hxx>
+#include <gunrock/graph/reorder.hxx>
 
 using namespace gunrock;
 using namespace memory;
@@ -33,7 +34,16 @@ void test_spmv(int num_arguments, char** argument_array) {
   using csr_t =
       format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   csr_t csr;
-  csr.from_coo(mm.load(filename));
+  using coo_t =
+      format::coo_t<memory_space_t::device, int, int, int>;
+  coo_t coo = mm.load(filename);
+  coo_t coo2 = coo;
+  
+  cuda::multi_context_t* context =  new cuda::multi_context_t(0);
+    
+  graph::reorder::uniquify(coo,coo2,coo.number_of_rows, coo.number_of_nonzeros,*context);
+  
+  csr.from_coo(coo2);
 
   // --
   // Build graph

@@ -20,10 +20,12 @@ namespace gunrock {
 	}
       };
       
-      void uniquify(format::coo_t<memory_space_t::device, int, int, int>& G, format::coo_t<memory_space_t::device, int, int, int>& rG, int M, int N) {
-	cuda::standard_context_t context;
+      void uniquify(format::coo_t<memory_space_t::device, int, int, int>& G, format::coo_t<memory_space_t::device, int, int, int>& rG, int M, int N, cuda::multi_context_t &context) {
+	cuda::standard_context_t* scontext = context.get_context(0);
+	  
+	int MM = 2*M;
 	thrust::device_vector<int> dkeys(N);
-	thrust::device_vector<int> zp(M,-1);
+	thrust::device_vector<int> zp(MM,-1);
 	auto I = thrust::raw_pointer_cast(G.row_indices.data());
 	auto J = thrust::raw_pointer_cast(G.column_indices.data());
 
@@ -37,8 +39,8 @@ namespace gunrock {
 	  if(tid < M)
 	    pk[I[tid]] = pk[I[tid]] > tid ? tid : pk[I[tid]];
 	  else{
-	    t = tid-M;
-	    pk[J[t]] = pk[J[t]] > t  ? t : pk[J[t]];
+	    pk[J[tid - M]] = pk[J[tid - M]] > tid  ? tid : pk[J[tid-M]];
+	  }
 	};
 	
 	auto make_zperm = [=]__device__(int const& tid, int const& bid) {
@@ -50,11 +52,11 @@ namespace gunrock {
 	  launch_box_t<launch_params_dynamic_grid_t<fallback, dim3_t<256>, 3>>;
 	launch_t l;
 	
-	l.launch_blocked(context,make_keys,2 * M);
-	context.synchronize();
+	l.launch_blocked(*scontext,make_keys,(std::size_t)M);
+	scontext->synchronize();
 
-	l.launch_blocked(context,make_zperm,N);
-	context.synchronize();
+	l.launch_blocked(*scontext,make_zperm,(std::size_t)N);
+	scontext->synchronize();
 
 	zp.erase(thrust::remove_if(zp.begin(), zp.end(), is_pad()),zp.end());
 
@@ -71,11 +73,11 @@ namespace gunrock {
 	  rJ[tid] = izp[rJ[tid]];
 	};
 
-	l.launch_blocked(context,inverse,N);
-	context.synchronize();
+	l.launch_blocked(*scontext,inverse,(std::size_t)N);
+	scontext->synchronize();
 
-	l.launch_blocked(context,permute,N);
-	context.synchronize();
+	l.launch_blocked(*scontext,permute,(std::size_t)N);
+	scontext->synchronize();
 
       }
     }
