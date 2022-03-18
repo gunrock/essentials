@@ -89,7 +89,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
                     edge_t const& edge,        // edge (row ↦ column)
                     weight_t const& weight     // weight (nonzero).
                     ) -> bool {
-      // y[row index] += weight * x[column index]
+      //y[source] += weight * x[neighbor];
       math::atomic::add(&(y[source]), weight * x[neighbor]);
       return false;  // ignored.
     };
