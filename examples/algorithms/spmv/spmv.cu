@@ -34,15 +34,15 @@ void test_spmv(int num_arguments, char** argument_array) {
   using csr_t =
       format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   csr_t csr;
-  using coo_t =
-      format::coo_t<memory_space_t::device, int, int, int>;
+  using coo_t = format::coo_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   coo_t coo = mm.load(filename);
   coo_t coo2 = coo;
-  
-  cuda::multi_context_t* context =  new cuda::multi_context_t(0);
-    
-  graph::reorder::uniquify(coo,coo2,coo.number_of_rows, coo.number_of_nonzeros,*context);
-  
+
+  auto context =
+      std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
+
+  graph::reorder::uniquify(coo, coo2, context);
+
   csr.from_coo(coo2);
 
   // --
