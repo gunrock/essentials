@@ -1,10 +1,13 @@
 #include <gunrock/algorithms/spmv.hxx>
 #include <gunrock/algorithms/generate/random.hxx>
 #include <gunrock/graph/reorder.hxx>
+#include <sys/time.h>
 
 using namespace gunrock;
 using namespace memory;
 
+double getTime() {                                                         struct timeval tv;                                                      gettimeofday(&tv, 0);                                                   return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+}  
 void test_spmv(int num_arguments, char** argument_array) {
   if (num_arguments != 2) {
     std::cerr << "usage: ./bin/<program-name> filename.mtx" << std::endl;
@@ -41,8 +44,11 @@ void test_spmv(int num_arguments, char** argument_array) {
   auto context =
       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
 
+  auto t1 = getTime();
   graph::reorder::uniquify(coo, coo2, context);
-
+  auto t2 = getTime();
+  printf("reorder:%f \n",t2-t1);
+  
   csr.from_coo(coo2);
 
   // --

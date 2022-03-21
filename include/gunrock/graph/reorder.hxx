@@ -21,12 +21,13 @@ template <typename coo_device_t>
 void uniquify(coo_device_t& G,
               coo_device_t& rG,
               std::shared_ptr<cuda::multi_context_t> context) {
+  printf("hello");
   std::shared_ptr<cuda::standard_context_t> scontext =
       std::shared_ptr<cuda::standard_context_t>(context->get_context(0));
   int M = G.number_of_nonzeros;
   int N = G.number_of_rows;
   int MM = 2 * M;
-  thrust::device_vector<int> dkeys(N);
+  thrust::device_vector<int> dkeys(N,std::numeric_limits<int>::max());
   thrust::device_vector<int> zp(MM, -1);
   auto I = thrust::raw_pointer_cast(G.row_indices.data());
   auto J = thrust::raw_pointer_cast(G.column_indices.data());
@@ -54,7 +55,7 @@ void uniquify(coo_device_t& G,
       launch_box_t<launch_params_dynamic_grid_t<fallback, dim3_t<256>, 3>>;
   launch_t l;
 
-  l.launch_blocked(*scontext, make_keys, (std::size_t)M);
+  l.launch_blocked(*scontext, make_keys, (std::size_t)MM);
   scontext->synchronize();
 
   l.launch_blocked(*scontext, make_zperm, (std::size_t)N);
@@ -71,14 +72,14 @@ void uniquify(coo_device_t& G,
     izp[z[tid]] = tid;
   };
   auto permute = [=] __device__(int const& tid, int const& bi) {
-    rI[tid] = izp[rI[tid]];
-    rJ[tid] = izp[rJ[tid]];
+    rI[tid] = izp[I[tid]];
+    rJ[tid] = izp[J[tid]];
   };
 
   l.launch_blocked(*scontext, inverse, (std::size_t)N);
   scontext->synchronize();
 
-  l.launch_blocked(*scontext, permute, (std::size_t)N);
+  l.launch_blocked(*scontext, permute, (std::size_t)M);
   scontext->synchronize();
 }
 }  // namespace reorder

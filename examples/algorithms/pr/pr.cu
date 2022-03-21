@@ -1,4 +1,5 @@
 #include <gunrock/algorithms/pr.hxx>
+#include <gunrock/graph/reorder.hxx>
 
 using namespace gunrock;
 using namespace memory;
@@ -20,6 +21,9 @@ void test_pr(int num_arguments, char** argument_array) {
       format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   csr_t csr;
 
+  using coo_t =
+      format::coo_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
+
   // --
   // IO
 
@@ -27,7 +31,12 @@ void test_pr(int num_arguments, char** argument_array) {
 
   if (util::is_market(filename)) {
     io::matrix_market_t<vertex_t, edge_t, weight_t> mm;
-    csr.from_coo(mm.load(filename));
+    coo_t coo = mm.load(filename);
+    coo_t coo2 = coo;
+    auto context = std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
+    graph::reorder::uniquify(coo, coo2, context);
+    
+    csr.from_coo(coo2);
   } else if (util::is_binary_csr(filename)) {
     csr.read_binary(filename);
   } else {
