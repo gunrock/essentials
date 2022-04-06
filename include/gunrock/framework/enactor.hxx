@@ -242,9 +242,11 @@ struct enactor_t {
    */
   float enact() {
     auto single_context = context->get_context(0);
-    prepare_frontier(get_input_frontier(), *context);
     auto timer = single_context->timer();
     timer.begin();
+    prepare_frontier(get_input_frontier(), *context);
+
+
     while (!is_converged(*context)) {
       loop(*context);
       ++iteration;

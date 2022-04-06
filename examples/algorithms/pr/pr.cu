@@ -1,8 +1,12 @@
 #include <gunrock/algorithms/pr.hxx>
 #include <gunrock/graph/reorder.hxx>
+#include <sys/time.h>
 
 using namespace gunrock;
 using namespace memory;
+
+double getTime() {                                                      struct timeval tv;                                                     gettimeofday(&tv, 0);                                                  return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;                     
+}
 
 void test_pr(int num_arguments, char** argument_array) {
   if (num_arguments != 2) {
@@ -12,7 +16,7 @@ void test_pr(int num_arguments, char** argument_array) {
 
   // --
   // Define types
-
+  auto t1 = getTime();
   using vertex_t = int;
   using edge_t = int;
   using weight_t = float;
@@ -34,8 +38,7 @@ void test_pr(int num_arguments, char** argument_array) {
     coo_t coo = mm.load(filename);
     coo_t coo2 = coo;
     auto context = std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
-    graph::reorder::uniquify(coo, coo2, context);
-    
+    graph::reorder::uniquify(coo, coo2, context);    
     csr.from_coo(coo2);
   } else if (util::is_binary_csr(filename)) {
     csr.read_binary(filename);
@@ -71,12 +74,14 @@ void test_pr(int num_arguments, char** argument_array) {
   // GPU Run
 
   float gpu_elapsed = gunrock::pr::run(G, alpha, tol, p.data().get());
-
+  auto t2 = getTime();
+  
   // --
   // Log + Validate
   print::head(p, 40, "GPU rank");
 
   std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
+  std::cout << "End to End Time : " << t2 - t1 << " (ms)" << std::endl;
 }
 
 int main(int argc, char** argv) {

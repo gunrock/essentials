@@ -13,6 +13,10 @@
 #pragma once
 
 #include <gunrock/algorithms/algorithms.hxx>
+#include <sys/time.h>
+
+/*double getTime() {                                                         struct timeval tv;                                                      gettimeofday(&tv, 0);                                                   return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+  } */ 
 
 namespace gunrock {
 namespace spmv {
@@ -140,6 +144,7 @@ float run(graph_t& G,
                   new cuda::multi_context_t(0))  // Context
 ) {
   // <user-defined>
+  auto t1 = getTime();
   using weight_t = typename graph_t::weight_type;
 
   using param_type = param_t<weight_t>;
@@ -161,6 +166,8 @@ float run(graph_t& G,
   props.self_manage_frontiers = true;
 
   enactor_type enactor(&problem, context, props);
+  auto t2 = getTime();
+  printf("Run %f \n",t2-t1);
   return enactor.enact();
   // </boiler-plate>
 }

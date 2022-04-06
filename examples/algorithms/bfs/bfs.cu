@@ -1,8 +1,16 @@
 #include <gunrock/algorithms/bfs.hxx>
+#include <gunrock/graph/reorder.hxx>
 #include "bfs_cpu.hxx"  // Reference implementation
+#include <sys/time.h>
 
 using namespace gunrock;
 using namespace memory;
+
+double getTime() {
+  struct timeval tv;
+  gettimeofday(&tv,0);
+  return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+}
 
 void test_bfs(int num_arguments, char** argument_array) {
   if (num_arguments != 2) {
@@ -12,14 +20,16 @@ void test_bfs(int num_arguments, char** argument_array) {
 
   // --
   // Define types
-
+  auto t1 = getTime();
   using vertex_t = int;
   using edge_t = int;
   using weight_t = float;
 
   using csr_t =
-      format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
+    format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
 
+  using coo_t =
+    format::coo_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   // --
   // IO
 
@@ -29,6 +39,11 @@ void test_bfs(int num_arguments, char** argument_array) {
   if (util::is_market(filename)) {
     io::matrix_market_t<vertex_t, edge_t, weight_t> mm;
     csr.from_coo(mm.load(filename));
+    coo_t coo = mm.load(filename);
+    //coo_t coo2 = coo;
+    // auto context = std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
+    //   graph::reorder::uniquify(coo, coo2, context);    
+    csr.from_coo(coo);
   } else if (util::is_binary_csr(filename)) {
     csr.read_binary(filename);
   } else {
@@ -70,7 +85,7 @@ void test_bfs(int num_arguments, char** argument_array) {
 
   float gpu_elapsed = gunrock::bfs::run(
       G, single_source, distances.data().get(), predecessors.data().get());
-
+  auto t2 = getTime();
   // --
   // CPU Run
 
@@ -85,11 +100,14 @@ void test_bfs(int num_arguments, char** argument_array) {
 
   // --
   // Log
-
+  
+  
   print::head(distances, 40, "GPU distances");
   print::head(h_distances, 40, "CPU Distances");
 
   std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
+  std::cout << "End to End Time : " << t2 - t1 << " (ms)" << std::endl;
+
   std::cout << "CPU Elapsed Time : " << cpu_elapsed << " (ms)" << std::endl;
   std::cout << "Number of errors : " << n_errors << std::endl;
 }

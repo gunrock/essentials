@@ -5,7 +5,10 @@
 #include <gunrock/formats/formats.hxx>
 
 #include <thrust/transform.h>
+#include <sys/time.h>
 
+double getTime() {                                                         struct timeval tv;                                                      gettimeofday(&tv, 0);                                                   return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+  }
 namespace gunrock {
 namespace format {
 
@@ -91,10 +94,12 @@ struct csr_t {
       assert(space == memory_space_t::device);
       // If returning csr_t on device, allocate temporary host vectors, build on
       // host and move to device.
+      auto t1 = getTime();
       Ap.resize(number_of_rows + 1);
       Aj.resize(number_of_nonzeros);
       Ax.resize(number_of_nonzeros);
-
+      auto t2 = getTime();
+      printf("resize: %f\n",t2-t1);
       // Ap = _Ap.data();
       // Aj = _Aj.data();
       // Ax = _Ax.data();
@@ -102,9 +107,12 @@ struct csr_t {
     } else {
       assert(space == memory_space_t::host);
       // If returning csr_t on host, use it's internal memory to build from COO.
+      auto t1 = getTime();
       row_offsets.resize(number_of_rows + 1);
       column_indices.resize(number_of_nonzeros);
       nonzero_values.resize(number_of_nonzeros);
+      auto t2 = getTime();
+      printf("resize2: %f\n",t2-t1);
 
       // Ap = raw_pointer_cast(row_offsets.data());
       // Aj = raw_pointer_cast(column_indices.data());
@@ -112,20 +120,27 @@ struct csr_t {
     }
 
     // compute number of non-zero entries per row of A.
+    auto tt1 = getTime();
     for (offset_t n = 0; n < number_of_nonzeros; ++n) {
       ++Ap[coo.row_indices[n]];
     }
+    auto tt2 = getTime();
+    printf("compute non-zeros: %f\n",tt2-tt1);
 
     // cumulative sum the nnz per row to get row_offsets[].
+    auto r1 = getTime();
     for (index_t i = 0, sum = 0; i < number_of_rows; ++i) {
       index_t temp = Ap[i];
       Ap[i] = sum;
       sum += temp;
     }
     Ap[number_of_rows] = number_of_nonzeros;
+    auto r2 = getTime();
+    printf("comulative non-zeros: %f\n",r2-r1);
 
     // write coordinate column indices and nonzero values into CSR's
     // column indices and nonzero values.
+    auto s1 = getTime();
     for (offset_t n = 0; n < number_of_nonzeros; ++n) {
       index_t row = coo.row_indices[n];
       index_t dest = Ap[row];
@@ -136,11 +151,14 @@ struct csr_t {
       ++Ap[row];
     }
 
+
     for (index_t i = 0, last = 0; i <= number_of_rows; ++i) {
       index_t temp = Ap[i];
       Ap[i] = last;
       last = temp;
     }
+    auto s2 = getTime();
+    printf("write columns: %f\n",s2-s1);
 
     // If returning a device csr_t, move coverted data to device.
     if (space == memory_space_t::device) {
