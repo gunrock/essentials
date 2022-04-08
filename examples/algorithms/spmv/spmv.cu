@@ -94,7 +94,7 @@ void test_spmv(int num_arguments, char** argument_array) {
   // GPU Run
   float gpu_elapsed = gunrock::spmv::run(G, x.data().get(), y.data().get());
   
-  gunrock::print::head(y, 40, "GPU y-vector");
+  gunrock::print::head(coo2.row_indices, 40, "GPU y-vector");
   std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
   
  std::string fname = reorder+"_spmv_results.csv";

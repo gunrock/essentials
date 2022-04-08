@@ -17,7 +17,7 @@ do
     $exe_file "reorder" $DATADIR$dataset/$dataset.mtx
     $exe_file "random" $DATADIR$dataset/$dataset.mtx
     ((i++))
-    if [[ $i -gt 2 ]]
+    if [[ $i -gt 10 ]]
     then
 	break
     else

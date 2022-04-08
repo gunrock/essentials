@@ -21,62 +21,7 @@ struct is_pad {
   __host__ __device__ bool operator()(const int& x) const { return x == -1; }
 };
 
-template <typename coo_device_t>
-void uniquify2(coo_device_t& G, coo_device_t& rG) {
-  int N = G.number_of_rows;
-  int M = G.number_of_nonzeros;
-  thrust::device_vector<int> permutation(2 * M);
-  thrust::device_vector<int> IJ(2 * M);
-  thrust::copy(IJ.begin(), IJ.begin() + M, G.row_indices.begin());
-  thrust::copy(IJ.begin() + M, IJ.end(), G.column_indices.begin());
-
-  thrust::sequence(permutation.begin(), permutation.end());
-
-  thrust::sort_by_key(IJ.begin(), IJ.end(), permutation.begin());
-
-  auto nend = thrust::unique_by_key(thrust::device, IJ.begin(), IJ.end(),
-                                    permutation.begin());
-
-  thrust::stable_sort_by_key(permutation.begin(), nend.second, IJ.begin());
-
-  thrust::gather(IJ.begin(), IJ.begin() + N, G.row_indices.begin(),
-                 rG.row_indices.begin());
-  thrust::gather(IJ.begin(), IJ.begin() + N, G.column_indices.begin(),
-                 rG.column_indices.begin());
-}
-
-template <typename coo_device_t>
-void degree(coo_device_t& G, coo_device_t& rG) {
-  int M = G.number_of_nonzeros;
-  int N = G.number_of_rows;
-  thrust::device_vector<int> ones(M, 1);
-  thrust::device_vector<int> degR(M, 0);
-  thrust::device_vector<int> outKey(M, 0);
-  thrust::device_vector<int> degC(M, 0);
-  thrust::device_vector<int> deg(M);
-  thrust::device_vector<int> permutation(N);
-  thrust::sequence(permutation.begin(), permutation.end());
-
-  auto endR = thrust::reduce_by_key(thrust::device, G.row_indices.begin(),
-                                    G.row_indices.end(), ones.begin(),
-                                    outKey.begin(), degR.begin());
-
-  auto endC = thrust::reduce_by_key(thrust::device, G.column_indices.begin(),
-                                    G.column_indices.end(), ones.begin(),
-                                    outKey.begin(), degC.begin());
-
-  thrust::transform(degR.begin(), degR.end(), degC.begin(), deg.begin(),
-                    thrust::plus<int>());
-
-  thrust::sort_by_key(deg.begin(), deg.begin(), permutation.begin(),
-                      thrust::greater<int>());
-  thrust::gather(permutation.begin(), permutation.end(), G.row_indices.begin(),
-                 rG.row_indices.begin());
-  thrust::gather(permutation.begin(), permutation.end(),
-                 G.column_indices.begin(), rG.column_indices.begin());
-}
-
-template <typename coo_device_t>
+  template <typename coo_device_t>
 void apply_permutation(coo_device_t& G,
                        coo_device_t& rG,
                        std::shared_ptr<cuda::multi_context_t> context,
@@ -117,6 +62,69 @@ void apply_permutation(coo_device_t& G,
   l.launch_blocked(*scontext, permute, (std::size_t)M);
   scontext->synchronize();
 }
+
+template <typename coo_device_t>
+void uniquify2(coo_device_t& G, coo_device_t& rG,
+	       std::shared_ptr<cuda::multi_context_t> context) {
+  int N = G.number_of_rows;
+  int NN = N*(N-1)/2;
+  int M = G.number_of_nonzeros;
+  thrust::device_vector<int> permutation(2 * M);
+  thrust::device_vector<int> IJ(2 * M);
+  thrust::copy(G.row_indices.begin(),G.row_indices.end(),IJ.begin());
+  thrust::copy(G.column_indices.begin(),G.column_indices.end(),IJ.begin()+M);
+
+  thrust::sequence(permutation.begin(), permutation.end());
+
+  thrust::sort_by_key(IJ.begin(), IJ.end(), permutation.begin());
+
+  auto nend = thrust::unique_by_key(thrust::device, IJ.begin(), IJ.end(),
+                                    permutation.begin());
+
+  thrust::sort_by_key(permutation.begin(), permutation.begin()+N, IJ.begin());
+
+  //  gunrock::print::head(IJ, 40, "IJ-permvector");
+  printf("NN = %i Reduce = %i \n",NN,thrust::reduce(IJ.begin(),IJ.begin()+N));
+  apply_permutation(G, rG, context, IJ);
+  //  thrust::gather(IJ.begin(), IJ.begin() + N, G.row_indices.begin(),
+  //             rG.row_indices.begin());
+  //thrust::gather(IJ.begin(), IJ.begin() + N, G.column_indices.begin(),
+  //             rG.column_indices.begin());
+}
+
+template <typename coo_device_t>
+void degree(coo_device_t& G, coo_device_t& rG,
+	    std::shared_ptr<cuda::multi_context_t> context) {
+  int M = G.number_of_nonzeros;
+  int N = G.number_of_rows;
+  thrust::device_vector<int> ones(2*M, 1);
+  //  thrust::device_vector<int> degR(M, 0);
+  thrust::device_vector<int> outKey(N);
+  //thrust::device_vector<int> degC(M, 0);
+  thrust::device_vector<int> deg(N);
+  thrust::device_vector<int> permutation(N);
+  thrust::sequence(permutation.begin(), permutation.end());
+
+
+  thrust::device_vector<int> IJ(2 * M);
+  thrust::copy(G.row_indices.begin(),G.row_indices.end(),IJ.begin());
+  thrust::copy(G.column_indices.begin(),G.column_indices.end(),IJ.begin()+M);
+
+  thrust::sort(IJ.begin(),IJ.end()); 
+  auto endn = thrust::reduce_by_key(thrust::device, IJ.begin(),
+                                    IJ.end(), ones.begin(),
+                                    outKey.begin(), deg.begin());
+
+
+  //  thrust::transform(degR.begin(), degR.end(), degC.begin(), deg.begin(),
+  //                thrust::plus<int>());
+
+  thrust::sort_by_key(deg.begin(), deg.begin(), permutation.begin(),
+                      thrust::less<int>());
+
+  apply_permutation(G, rG, context, permutation);
+}
+
 
 template <typename coo_device_t>
 void random(coo_device_t& G,
@@ -184,7 +192,8 @@ void uniquify(coo_device_t& G,
   l.launch_blocked(*scontext, make_zperm, (std::size_t)N);
   scontext->synchronize();
 
-  zp.erase(thrust::remove_if(zp.begin(), zp.end(), is_pad()), zp.end());
+  //  zp.erase(thrust::remove_if(zp.begin(), zp.end(), is_pad()), zp.end());
+  thrust::remove_if(zp.begin(), zp.end(), is_pad());
   auto z = thrust::raw_pointer_cast(zp.data());
 
   thrust::device_vector<int> iz(N);
@@ -193,7 +202,7 @@ void uniquify(coo_device_t& G,
   auto inverse = [=] __device__(int const& tid, int const& bid) {
     izp[z[tid]] = tid;
   };
-  auto permute = [=] __device__(int const& tid, int const& bi) {
+  auto permute = [=] __device__(int const& tid, int const& bi) {    
     rI[tid] = izp[I[tid]];
     rJ[tid] = izp[J[tid]];
   };
@@ -203,6 +212,8 @@ void uniquify(coo_device_t& G,
 
   l.launch_blocked(*scontext, permute, (std::size_t)M);
   scontext->synchronize();
+
+  printf("NN = %i Reduce = %i \n",N*(N-1)/2,thrust::reduce(iz.begin(),iz.end()));
 }
 }  // namespace reorder
 }  // namespace graph
