@@ -9,10 +9,11 @@ using namespace gunrock;
 using namespace memory;
 
 /*double getTime() {                                                         struct timeval tv;                                                      gettimeofday(&tv, 0);                                                   return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
-  } */ 
+  } */
 void test_spmv(int num_arguments, char** argument_array) {
-  if (num_arguments != 3) {
-    std::cerr << "usage: ./bin/<program-name> reorder filename.mtx" << std::endl;
+  if (num_arguments != 4) {
+    std::cerr << "usage: ./bin/<program-name> reorder filename.mtx GS"
+              << std::endl;
     exit(1);
   }
 
@@ -32,6 +33,7 @@ void test_spmv(int num_arguments, char** argument_array) {
 
   gunrock::util::timer_t reorderTimer;
   // Filename to be read
+  std::string GS = argument_array[3];
   std::string filename = argument_array[2];
   std::string reorder = argument_array[1];
   // Load the matrix-market dataset into csr format.
@@ -41,30 +43,32 @@ void test_spmv(int num_arguments, char** argument_array) {
   using csr_t =
       format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   csr_t csr;
-  using coo_t = format::coo_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
+  using coo_t =
+      format::coo_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   coo_t coo = mm.load(filename);
   coo_t coo2 = coo;
 
   auto context =
-    std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
-  graph::reorder::random(coo2,coo,context);
+      std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
+  graph::reorder::random(coo2, coo, context);
   // auto t1 = getTime();
   reorderTimer.begin();
-  if(reorder == "reorder")
-    graph::reorder::uniquify(coo, coo2, std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
-  //graph::reorder::uniquify2(coo, coo2);
+  if (reorder == "reorder")
+    graph::reorder::uniquify(
+        coo, coo2,
+        std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
+  // graph::reorder::uniquify2(coo, coo2);
   // graph::reorder::random(coo, coo2);
-  //graph::reorder::degree(coo, coo2);
+  // graph::reorder::degree(coo, coo2);
   //  auto t2 = getTime();
   auto reorder_time = reorderTimer.end();
-  printf("reorder:%f \n",reorder_time);
+  printf("reorder:%f \n", reorder_time);
 
   auto tt = getTime();
-  csr.from_coo(reorder == "reorder" ? coo2: coo);
+  csr.from_coo(reorder == "reorder" ? coo2 : coo);
   auto tt2 = getTime();
   auto buildcsr = tt2 - tt;
-  printf("Building CSR:%f \n",tt2-tt);
-  
+  printf("Building CSR:%f \n", tt2 - tt);
 
   // --
   // Build graph
@@ -88,22 +92,26 @@ void test_spmv(int num_arguments, char** argument_array) {
   thrust::device_vector<weight_t> y(n_vertices);
 
   gunrock::generate::random::uniform_distribution(x);
-  //auto b2 = getTime();
-  //printf("build Graph:%f \n",b2-b1);
+  // auto b2 = getTime();
+  // printf("build Graph:%f \n",b2-b1);
   // --
   // GPU Run
   float gpu_elapsed = gunrock::spmv::run(G, x.data().get(), y.data().get());
-  
+
   gunrock::print::head(coo2.row_indices, 40, "GPU y-vector");
   std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
+
   
- std::string fname = reorder+"_spmv_results.csv";
- bool output_file_exist = std::filesystem::exists(std::string("./") + fname);
- std::fstream output(std::string("./") + fname, std::ios::app);
- if (!output_file_exist) {
-   output << "graph_name, CSR_build_time, Reorder_Time, SPMV_Run,\n";
- }
- output << filename <<"," << buildcsr << "," << reorder_time <<"," << gpu_elapsed <<",\n"; 
+  auto gs = GS == "GS" ? graph::reorder::gscore(G) : 0;
+  printf("GSCORE %i\n", gs);
+  std::string fname = reorder + "_spmv_results.csv";
+  bool output_file_exist = std::filesystem::exists(std::string("./") + fname);
+  std::fstream output(std::string("./") + fname, std::ios::app);
+  if (!output_file_exist) {
+    output << "graph_name, CSR_build_time, Reorder_Time, SPMV_Run, GSCORE \n";
+  }
+  output << filename << "," << buildcsr << "," << reorder_time << ","
+         << gpu_elapsed << "," << gs << ",\n";
 }
 
 // Main method, wrapping test function

@@ -14,8 +14,8 @@ done
 i=0
 for dataset in  "${test_datasets[@]}"
 do
-    $exe_file "reorder" $DATADIR$dataset/$dataset.mtx
-    $exe_file "random" $DATADIR$dataset/$dataset.mtx
+    $exe_file "reorder" $DATADIR$dataset/$dataset.mtx "noGS"
+    $exe_file "random" $DATADIR$dataset/$dataset.mtx  "noGS"
     ((i++))
     if [[ $i -gt 10 ]]
     then
