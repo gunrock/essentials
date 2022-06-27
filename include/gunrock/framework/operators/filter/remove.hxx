@@ -1,6 +1,7 @@
 #pragma once
 
 #include <gunrock/framework/operators/configs.hxx>
+#include <thrust/remove.h>
 
 namespace gunrock {
 namespace operators {
@@ -11,7 +12,7 @@ void execute(graph_t& G,
              operator_t op,
              frontier_t* input,
              frontier_t* output,
-             cuda::standard_context_t& context) {
+             gcuda::standard_context_t& context) {
   using type_t = typename frontier_t::type_t;
 
   // Allocate output size if necessary.

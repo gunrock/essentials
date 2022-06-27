@@ -59,7 +59,7 @@ template <typename csr_device_t>
 __device__ void uv_gscore(int v, int u, int& score, csr_device_t& G) {
   //  score = 0;
   int N = G.get_number_of_vertices();
-  if(u < N){
+  if (u < N) {
     auto Vnum_neighbors = G.get_number_of_neighbors(v);
     auto Vstart = G.get_starting_edge(v);
     for (auto Vvi = Vstart; Vvi < Vstart + Vnum_neighbors; Vvi++) {
@@ -89,17 +89,20 @@ __device__ void uv_gscore(int v, int u, int& score, csr_device_t& G) {
       score = score + 1;
   }
 }
-  
+
 template <typename csr_device_t>
-int gscore(csr_device_t& G, std::shared_ptr<cuda::multi_context_t> context = std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0))) {
-  std::shared_ptr<cuda::standard_context_t> scontext =
-      std::shared_ptr<cuda::standard_context_t>(context->get_context(0));
+int gscore(csr_device_t& G,
+           std::shared_ptr<gcuda::multi_context_t> context =
+               std::shared_ptr<gcuda::multi_context_t>(
+                   new gcuda::multi_context_t(0))) {
+  std::shared_ptr<gcuda::standard_context_t> scontext =
+      std::shared_ptr<gcuda::standard_context_t>(context->get_context(0));
 
   int N = G.get_number_of_vertices();
   thrust::device_vector<int> uv_score(N, 0);
   auto uv = thrust::raw_pointer_cast(uv_score.data());
 
-  using namespace cuda::launch_box;
+  using namespace gcuda::launch_box;
   using launch_t =
       launch_box_t<launch_params_dynamic_grid_t<fallback, dim3_t<256>, 3>>;
   launch_t l;
@@ -123,10 +126,10 @@ struct is_pad {
 template <typename coo_device_t>
 void apply_permutation(coo_device_t& G,
                        coo_device_t& rG,
-                       std::shared_ptr<cuda::multi_context_t> context,
+                       std::shared_ptr<gcuda::multi_context_t> context,
                        thrust::device_vector<int>& perm) {
-  std::shared_ptr<cuda::standard_context_t> scontext =
-      std::shared_ptr<cuda::standard_context_t>(context->get_context(0));
+  std::shared_ptr<gcuda::standard_context_t> scontext =
+      std::shared_ptr<gcuda::standard_context_t>(context->get_context(0));
 
   int M = G.number_of_nonzeros;
   int N = G.number_of_rows;
@@ -150,7 +153,7 @@ void apply_permutation(coo_device_t& G,
     rJ[tid] = ip[J[tid]];
   };
 
-  using namespace cuda::launch_box;
+  using namespace gcuda::launch_box;
   using launch_t =
       launch_box_t<launch_params_dynamic_grid_t<fallback, dim3_t<256>, 3>>;
   launch_t l;
@@ -161,18 +164,18 @@ void apply_permutation(coo_device_t& G,
   l.launch_blocked(*scontext, permute, (std::size_t)M);
   scontext->synchronize();
 }
-  
-  template <typename coo_device_t,typename coo_host_t>
+
+template <typename coo_device_t, typename coo_host_t>
 void edge_order(coo_device_t& G,
-               coo_device_t& rG,
-		coo_host_t& Gh,
-               std::shared_ptr<cuda::multi_context_t> context) {
+                coo_device_t& rG,
+                coo_host_t& Gh,
+                std::shared_ptr<gcuda::multi_context_t> context) {
   int N = G.number_of_rows;
   int M = G.number_of_nonzeros;
   auto I = thrust::raw_pointer_cast(Gh.row_indices.data());
   auto J = thrust::raw_pointer_cast(Gh.column_indices.data());
 
-  thrust::host_vector<int> Seen(N,0);
+  thrust::host_vector<int> Seen(N, 0);
   thrust::host_vector<int> perm(N);
   /*
   for(int i = 0, j = 0, k = N-1; i < M; ++i) {
@@ -194,43 +197,41 @@ void edge_order(coo_device_t& G,
     }
   }
   */
-  
+
   int j = 0;
-  for(int i = 0; i < M; ++i) {
+  for (int i = 0; i < M; ++i) {
     auto a = I[i];
     auto b = J[i];
-    if(!Seen[a] && !Seen[b]) {
+    if (!Seen[a] && !Seen[b]) {
       Seen[a] = 1;
       perm[j++] = a;
       Seen[b] = 1;
       perm[j++] = b;
     }
   }
-  for(int i = 0; i < M; ++i){
+  for (int i = 0; i < M; ++i) {
     auto a = I[i];
     auto b = J[i];
-    
-    if(!Seen[a]){
+
+    if (!Seen[a]) {
       Seen[a] = 1;
       perm[j++] = a;
-    }
-    else if(!Seen[b]){
+    } else if (!Seen[b]) {
       Seen[b] = 1;
       perm[j++] = b;
-      }
+    }
   }
-  
+
   thrust::device_vector<int> permutation(N);
   permutation = perm;
 
   apply_permutation(G, rG, context, permutation);
-  
 }
-  
+
 template <typename coo_device_t>
 void uniquify2(coo_device_t& G,
                coo_device_t& rG,
-               std::shared_ptr<cuda::multi_context_t> context) {
+               std::shared_ptr<gcuda::multi_context_t> context) {
   int N = G.number_of_rows;
   int M = G.number_of_nonzeros;
 
@@ -277,7 +278,7 @@ void uniquify2(coo_device_t& G,
 template <typename coo_device_t>
 void degree(coo_device_t& G,
             coo_device_t& rG,
-            std::shared_ptr<cuda::multi_context_t> context) {
+            std::shared_ptr<gcuda::multi_context_t> context) {
   int M = G.number_of_nonzeros;
   int N = G.number_of_rows;
   thrust::device_vector<int> ones(2 * M, 1);
@@ -309,7 +310,7 @@ void degree(coo_device_t& G,
 template <typename coo_device_t>
 void random(coo_device_t& G,
             coo_device_t& rG,
-            std::shared_ptr<cuda::multi_context_t> context) {
+            std::shared_ptr<gcuda::multi_context_t> context) {
   int N = G.number_of_rows;
   thrust::device_vector<int> permutation(N);
   thrust::default_random_engine g(2);
@@ -318,7 +319,8 @@ void random(coo_device_t& G,
   thrust::shuffle(permutation.begin(), permutation.end(), g);
 
   //  thrust::sort(permutation.begin(), permutation.end());
-  // printf("PERM SUM %i\n", thrust::reduce(permutation.begin(),permutation.end()));
+  // printf("PERM SUM %i\n",
+  // thrust::reduce(permutation.begin(),permutation.end()));
   // thrust::gather(permutation.begin(), permutation.end(),
   // G.row_indices.begin(),
   //             rG.row_indices.begin());
@@ -330,10 +332,10 @@ void random(coo_device_t& G,
 template <typename coo_device_t>
 void uniquify(coo_device_t& G,
               coo_device_t& rG,
-              std::shared_ptr<cuda::multi_context_t> context) {
+              std::shared_ptr<gcuda::multi_context_t> context) {
   //
-  std::shared_ptr<cuda::standard_context_t> scontext =
-      std::shared_ptr<cuda::standard_context_t>(context->get_context(0));
+  std::shared_ptr<gcuda::standard_context_t> scontext =
+      std::shared_ptr<gcuda::standard_context_t>(context->get_context(0));
   int M = G.number_of_nonzeros;
   int N = G.number_of_rows;
   int MM = 2 * M;
@@ -349,7 +351,6 @@ void uniquify(coo_device_t& G,
   thrust::sort_by_key(rperm.begin(), rperm.end(), rG.row_indices.begin());
   thrust::sort_by_key(rperm.begin(), rperm.end(), rG.column_indices.begin());
   */
-   
 
   thrust::device_vector<int> dkeys(N, std::numeric_limits<int>::max());
   thrust::device_vector<int> zp(MM, -1);
@@ -380,7 +381,7 @@ void uniquify(coo_device_t& G,
       p[pk[tid]] = tid;
   };
 
-  using namespace cuda::launch_box;
+  using namespace gcuda::launch_box;
   using launch_t =
       launch_box_t<launch_params_dynamic_grid_t<fallback, dim3_t<256>, 3>>;
   launch_t l;
@@ -418,12 +419,12 @@ void uniquify(coo_device_t& G,
 
   thrust::sequence(rperm.begin(), rperm.end());
   //thrust::shuffle(rperm.begin(), rperm.end(), g);
-  thrust::sort_by_key(rG.row_indices.begin(), rG.row_indices.end(), rperm.begin());
-  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.row_indices.begin());
-  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.column_indices.begin());
+  thrust::sort_by_key(rG.row_indices.begin(), rG.row_indices.end(),
+  rperm.begin()); thrust::sort_by_key(rperm.begin(), rperm.end(),
+  rG.row_indices.begin()); thrust::sort_by_key(rperm.begin(), rperm.end(),
+  rG.column_indices.begin());
   */
-  
-  
+
   /*thrust::sort(zp.begin(),zp.end());
   printf("NN = %i Reduce = %i
   \n",999*1000/2,thrust::reduce(zp.begin(),zp.begin()+1000));

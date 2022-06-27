@@ -41,7 +41,7 @@ struct problem_t : gunrock::problem_t<graph_t> {
   problem_t(graph_t& G,
             param_type& _param,
             result_type& _result,
-            std::shared_ptr<cuda::multi_context_t> _context)
+            std::shared_ptr<gcuda::multi_context_t> _context)
       : gunrock::problem_t<graph_t>(G, _context),
         param(_param),
         result(_result) {}
@@ -65,7 +65,7 @@ struct problem_t : gunrock::problem_t<graph_t> {
 template <typename problem_t>
 struct enactor_t : gunrock::enactor_t<problem_t> {
   enactor_t(problem_t* _problem,
-            std::shared_ptr<cuda::multi_context_t> _context,
+            std::shared_ptr<gcuda::multi_context_t> _context,
             enactor_properties_t _properties = enactor_properties_t())
       : gunrock::enactor_t<problem_t>(_problem, _context, _properties) {}
 
@@ -73,13 +73,13 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
   using edge_t = typename problem_t::edge_t;
   using weight_t = typename problem_t::weight_t;
 
-  void loop(cuda::multi_context_t& context) override {
+  void loop(gcuda::multi_context_t& context) override {
     // TODO: Use a parameter (enum) to select between the two:
     // Maybe use the existing advance_direction_t enum.
     pull(context);
   }
 
-  void push(cuda::multi_context_t& context) {
+  void push(gcuda::multi_context_t& context) {
     auto E = this->get_enactor();
     auto P = this->get_problem();
     auto G = P->get_graph();
@@ -108,7 +108,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
         G, E, spmv, context);
   }
 
-  void pull(cuda::multi_context_t& context) {
+  void pull(gcuda::multi_context_t& context) {
     auto E = this->get_enactor();
     auto P = this->get_problem();
     auto G = P->get_graph();
@@ -130,7 +130,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
                                        context);
   }
 
-  virtual bool is_converged(cuda::multi_context_t& context) {
+  virtual bool is_converged(gcuda::multi_context_t& context) {
     return this->iteration == 0 ? false : true;
   }
 };  // struct enactor_t
@@ -139,9 +139,9 @@ template <typename graph_t>
 float run(graph_t& G,
           typename graph_t::weight_type* x,  // Input vector
           typename graph_t::weight_type* y,  // Output vector
-          std::shared_ptr<cuda::multi_context_t> context =
-              std::shared_ptr<cuda::multi_context_t>(
-                  new cuda::multi_context_t(0))  // Context
+          std::shared_ptr<gcuda::multi_context_t> context =
+              std::shared_ptr<gcuda::multi_context_t>(
+                  new gcuda::multi_context_t(0))  // Context
 ) {
   // <user-defined>
   auto t1 = getTime();

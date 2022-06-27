@@ -6,11 +6,11 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include "spmv_cpu.hxx"
+
 using namespace gunrock;
 using namespace memory;
 
-/*double getTime() {                                                         struct timeval tv;                                                      gettimeofday(&tv, 0);                                                   return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
-  } */
 void test_spmv(int num_arguments, char** argument_array) {
   if (num_arguments != 4) {
     std::cerr << "usage: ./bin/<program-name> reorder filename.mtx GS"
@@ -47,49 +47,49 @@ void test_spmv(int num_arguments, char** argument_array) {
   using coo_t =
       format::coo_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   coo_t coo = mm.load(filename);
-  //auto cooO = coo;
+  // auto cooO = coo;
   float reorder_time = 0;
-  auto copyTime = getTime();
+  util::cpu_timer_t copyTime;
+  copyTime.begin();
   coo_t coo2 = coo;
-  auto copyTime2 = getTime();
-  printf("copy time is %f\n", copyTime2 - copyTime);
-  
+  copyTime.end();
+  printf("copy time is %f\n", copyTime.milliseconds());
 
-  if(reorder != "nore"){
+  if (reorder != "nore") {
     auto context =
-      std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
+        std::shared_ptr<gcuda::multi_context_t>(new gcuda::multi_context_t(0));
     graph::reorder::random(coo2, coo, context);
-    if(GS.find("write") != std::string::npos) {
+    if (GS.find("write") != std::string::npos) {
       //  graph::reorder::random(coo2, coo, context);
-      graph::reorder::uniquify(
-			       coo, coo2,
-			       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
+      graph::reorder::uniquify(coo, coo2,
+                               std::shared_ptr<gcuda::multi_context_t>(
+                                   new gcuda::multi_context_t(0)));
       using coo_t =
-	format::coo_t<memory_space_t::host, vertex_t, edge_t, weight_t>;
+          format::coo_t<memory_space_t::host, vertex_t, edge_t, weight_t>;
       coo_t cooh = coo2;
-      graph::reorder::write_mtx(cooh,GS.c_str());
+      graph::reorder::write_mtx(cooh, GS.c_str());
       return;
     }
-    if(GS.find("edgeW") != std::string::npos) {
+    if (GS.find("edgeW") != std::string::npos) {
       //  graph::reorder::random(coo2, coo, context);
       using coo_t =
-	format::coo_t<memory_space_t::host, vertex_t, edge_t, weight_t>;
+          format::coo_t<memory_space_t::host, vertex_t, edge_t, weight_t>;
 
       coo_t cooh = coo;
-      graph::reorder::edge_order(
-				 coo, coo2,cooh,
-			       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
+      graph::reorder::edge_order(coo, coo2, cooh,
+                                 std::shared_ptr<gcuda::multi_context_t>(
+                                     new gcuda::multi_context_t(0)));
 
       cooh = coo2;
-      graph::reorder::write_mtx(cooh,GS.c_str());
+      graph::reorder::write_mtx(cooh, GS.c_str());
       return;
     }
     // auto t1 = getTime();
     reorderTimer.begin();
-    if (reorder == "reorder") {         
-      graph::reorder::uniquify(
-			       coo, coo2,
-			       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
+    if (reorder == "reorder") {
+      graph::reorder::uniquify(coo, coo2,
+                               std::shared_ptr<gcuda::multi_context_t>(
+                                   new gcuda::multi_context_t(0)));
     }
     // graph::reorder::uniquify2(coo, coo2);
     // graph::reorder::random(coo, coo2);
@@ -98,14 +98,15 @@ void test_spmv(int num_arguments, char** argument_array) {
     reorder_time = reorderTimer.end();
     printf("reorder:%f \n", reorder_time);
   }
-  auto tt = getTime();
-  if(reorder == "reorder")
+  util::cpu_timer_t tt;
+  tt.begin();
+  if (reorder == "reorder")
     csr.from_coo(coo2);
-  else csr.from_coo(coo);
-  
-  auto tt2 = getTime();
-  auto buildcsr = tt2 - tt;
-  printf("Building CSR:%f \n", tt2 - tt);
+  else
+    csr.from_coo(coo);
+  auto buildcsr = tt.end();
+
+  printf("Building CSR:%f \n", buildcsr);
 
   // --
   // Build graph
@@ -127,7 +128,7 @@ void test_spmv(int num_arguments, char** argument_array) {
   vertex_t n_vertices = G.get_number_of_vertices();
   thrust::device_vector<weight_t> x(n_vertices);
   thrust::device_vector<weight_t> y(n_vertices);
-  //thrust::device_vector<weight_t> yy(n_vertices);
+  // thrust::device_vector<weight_t> yy(n_vertices);
   // thrust::device_vector<weight_t> w(n_vertices);
 
   gunrock::generate::random::uniform_distribution(x);
@@ -137,13 +138,13 @@ void test_spmv(int num_arguments, char** argument_array) {
   // GPU Run
   float gpu_elapsed = gunrock::spmv::run(G, x.data().get(), y.data().get());
 
-  //gunrock::print::head(cooO.row_indices, 40, "cooO");
-  //gunrock::print::head(coo.row_indices, 40, "coo");
-  //gunrock::print::head(coo2.row_indices, 40, "coo2");
+  // gunrock::print::head(cooO.row_indices, 40, "cooO");
+  // gunrock::print::head(coo.row_indices, 40, "coo");
+  // gunrock::print::head(coo2.row_indices, 40, "coo2");
   std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
 
   using json = nlohmann::json;
-  
+
   auto gs = GS == "GS" ? graph::reorder::gscore(G) : 0;
   printf("GSCORE %i\n", gs);
   std::string fname = reorder + "_" + GS + "_spmv_results.json";
@@ -155,7 +156,7 @@ void test_spmv(int num_arguments, char** argument_array) {
   /* FOR TEST
   csr_t csr_T;
   csr_T.from_coo(cooO);
-  
+
   auto G_T = graph::build::from_csr<memory_space_t::device, graph::view_t::csr>(
       csr_T.number_of_rows, csr_T.number_of_columns, csr_T.number_of_nonzeros,
       csr_T.row_offsets.data().get(), csr_T.column_indices.data().get(),
@@ -165,28 +166,53 @@ void test_spmv(int num_arguments, char** argument_array) {
   thrust::sort(y.begin(),y.end());
   thrust::sort(yy.begin(),yy.end());
   thrust::transform(y.begin(),y.end(),yy.begin(),w.begin(),thrust::minus<float>());
-  printf("TEST: %f, %i, %i, %f \n", thrust::reduce(w.begin(),w.end()),G.get_number_of_vertices(),G_T.get_number_of_vertices(), exT2);
-  gunrock::print::head(y, 40, "y");
-  gunrock::print::head(yy, 40, "yy");
-  
-  
+  printf("TEST: %f, %i, %i, %f \n",
+  thrust::reduce(w.begin(),w.end()),G.get_number_of_vertices(),G_T.get_number_of_vertices(),
+  exT2); gunrock::print::head(y, 40, "y"); gunrock::print::head(yy, 40, "yy");
+
+
   /*if (!output_file_exist) {
-    output << "graph_name, M, N, CSR_build_time, Reorder_Time, SPMV_Run, GSCORE, \n";
+    output << "graph_name, M, N, CSR_build_time, Reorder_Time, SPMV_Run, GSCORE,
+  \n";
   }
-  output << basename << "," << G.get_number_of_vertices() << "," << G.get_number_of_edges() << "," << buildcsr << "," << reorder_time << ","
+  output << basename << "," << G.get_number_of_vertices() << "," <<
+  G.get_number_of_edges() << "," << buildcsr << "," << reorder_time << ","
          << gpu_elapsed << "," << gs << ",\n";
   */
-    json record;
-    record["graph_name"] = basename;
-    record["M"] = G.get_number_of_edges();
-    record["N"] = G.get_number_of_vertices();
-    record["CSR_Build_Time"] = buildcsr;
-    if(reorder == "reorder")
-      record["Reorder_Time"] = reorder_time;
-    record["SPMV_Run"] = gpu_elapsed;
-    if(GS == "GS")
-      record["GSCORE"] = gs;
-    output << record << "\n";
+  json record;
+  record["graph_name"] = basename;
+  record["M"] = G.get_number_of_edges();
+  record["N"] = G.get_number_of_vertices();
+  record["CSR_Build_Time"] = buildcsr;
+  if (reorder == "reorder")
+    record["Reorder_Time"] = reorder_time;
+  record["SPMV_Run"] = gpu_elapsed;
+  if (GS == "GS")
+    record["GSCORE"] = gs;
+  output << record << "\n";
+
+  // --
+  // CPU Run
+
+  thrust::host_vector<weight_t> y_h(n_vertices);
+  float cpu_elapsed = spmv_cpu::run(csr, x, y_h);
+
+  // --
+  // Log + Validate
+  int n_errors = util::compare(
+      y.data().get(), y_h.data(), n_vertices,
+      [=](const weight_t a, const weight_t b) {
+        // TODO: needs better accuracy.
+        return std::abs(a - b) > 1e-2;
+      },
+      true);
+
+  gunrock::print::head(y, 40, "GPU y-vector");
+  gunrock::print::head(y_h, 40, "CPU y-vector");
+
+  std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
+  std::cout << "CPU Elapsed Time : " << cpu_elapsed << " (ms)" << std::endl;
+  std::cout << "Number of errors : " << n_errors << std::endl;
 }
 
 // Main method, wrapping test function

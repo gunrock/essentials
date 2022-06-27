@@ -37,6 +37,8 @@ set(PROJECT_DEPS_DIR externals)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchThrustCUB.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchModernGPU.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchCXXOpts.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/FetchRapidJSON.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/FetchNlohmannJson.cmake)
 # end /* Include cmake modules */
 
 ## Set the directory where the binaries will be stored
@@ -55,14 +57,13 @@ set(LIBRARY_OUTPUT_PATH
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
-
 ############ ADD LIBRARY: ESSENTIALS (HEADER-ONLY) ############
 add_library(essentials INTERFACE)
 
 ####################################################
 ############### SET TARGET PROPERTIES ##############
 ####################################################
-set_target_properties(essentials 
+set_target_properties(essentials
   PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
@@ -76,16 +77,9 @@ set_target_properties(essentials
     # CUDA_PTX_COMPILATION ON # Can only be applied to OBJ.
 )
 
-include(FetchContent)
-
-FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.10.5/json.tar.xz)
-FetchContent_MakeAvailable(json)
-
-target_link_libraries(essentials INTERFACE nlohmann_json::nlohmann_json)
-
 # Use for later.
-get_target_property(ESSENTIALS_ARCHITECTURES 
-  essentials 
+get_target_property(ESSENTIALS_ARCHITECTURES
+  essentials
     CUDA_ARCHITECTURES
 )
 
@@ -93,7 +87,7 @@ get_target_property(ESSENTIALS_ARCHITECTURES
 ############ TARGET COMPILER DEFINITIONS ###########
 ####################################################
 target_compile_definitions(essentials
-  INTERFACE 
+  INTERFACE
     SM_TARGET=${ESSENTIALS_ARCHITECTURES}
     ESSENTIALS_VERSION=${ESSENTIALS_VERSION}
 )
@@ -119,6 +113,7 @@ target_include_directories(essentials
   INTERFACE ${CUB_INCLUDE_DIR}
   INTERFACE ${MODERNGPU_INCLUDE_DIR}
   INTERFACE ${RAPIDJSON_INCLUDE_DIR}
+  INTERFACE ${NHLOMANN_JSON_INCLUDE_DIR}
   INTERFACE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
 
@@ -128,6 +123,7 @@ target_include_directories(essentials
 target_link_libraries(essentials
   INTERFACE curand
   INTERFACE cuda
+  INTERFACE cusparse
 )
 
 ####################################################
@@ -141,12 +137,12 @@ target_sources(essentials
 ####################################################
 ############## SET CXX & CUDA FLAGS ################
 ####################################################
-set(CXX_FLAGS 
+set(CXX_FLAGS
   $<$<CXX_COMPILER_ID:MSVC>:
     /W4
   >
   $<$<CXX_COMPILER_ID:GNU>:
-    -Wall 
+    -Wall
     # -Wextra
     -Wno-unused-result
     -Wno-unused-local-typedefs
@@ -159,7 +155,7 @@ set(CXX_FLAGS
 )
 
 set(CUDA_FLAGS
-  --expt-extended-lambda 
+  --expt-extended-lambda
   --expt-relaxed-constexpr
   --use_fast_math
   --ptxas-options -v
@@ -170,10 +166,13 @@ set(CUDA_FLAGS
   # --device-debug # Device debug
 )
 
+set(CMAKE_CUDA_FLAGS_DEBUG "--optimize 0 --debug --device-debug -g -G")
+set(CMAKE_CUDA_FLAGS_RELEASE "--optimize 3")
+
 ####################################################
 ############ TARGET COMPILE OPTIONS ################
 ####################################################
-target_compile_options(essentials INTERFACE 
+target_compile_options(essentials INTERFACE
   $<$<COMPILE_LANGUAGE:CXX>:${CXX_FLAGS}>
   $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_FLAGS}>
 )
@@ -195,11 +194,12 @@ endif(ESSENTIALS_BUILD_EXAMPLES)
 ####################################################
 option(ESSENTIALS_BUILD_TESTS
   "If on, builds the unit tests."
-  OFF)
+  ON)
 
 # Subdirectories for examples, testing and documentation
 if(ESSENTIALS_BUILD_TESTS)
   include(${PROJECT_SOURCE_DIR}/cmake/FetchGoogleTest.cmake)
+  enable_testing()
   add_subdirectory(unittests)
 endif(ESSENTIALS_BUILD_TESTS)
 
