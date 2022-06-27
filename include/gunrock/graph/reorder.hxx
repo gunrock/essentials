@@ -18,6 +18,43 @@ namespace gunrock {
 namespace graph {
 namespace reorder {
 
+template <typename coo_host_t>
+void write_el(coo_host_t& G, const char* fname) {
+  printf("writing %s \n", fname);
+  FILE* file;
+  int M = G.number_of_nonzeros;
+  int N = G.number_of_rows;
+
+  auto I = thrust::raw_pointer_cast(G.row_indices.data());
+  auto J = thrust::raw_pointer_cast(G.column_indices.data());
+
+  if (file = fopen(fname, "w")) {
+    for (int i = 0; i < M; ++i)
+      fprintf(file, "%i %i\n", I[i], J[i]);
+
+    fclose(file);
+  }
+}
+template <typename coo_host_t>
+void write_mtx(coo_host_t& G, const char* fname) {
+  printf("writing %s \n", fname);
+  FILE* file;
+  int M = G.number_of_nonzeros;
+  int N = G.number_of_rows;
+
+  auto I = thrust::raw_pointer_cast(G.row_indices.data());
+  auto J = thrust::raw_pointer_cast(G.column_indices.data());
+
+  if (file = fopen(fname, "w")) {
+    fprintf(file, "%%%%MatrixMarket matrix coordinate real general \n");
+    fprintf(file, "%i %i %i\n", N, N, M);
+    for (int i = 0; i < M; ++i)
+      fprintf(file, "%i %i 1.0\n", I[i] + 1, J[i] + 1);
+
+    fclose(file);
+  }
+}
+
 template <typename csr_device_t>
 __device__ void uv_gscore(int v, int u, int& score, csr_device_t& G) {
   //  score = 0;
@@ -52,6 +89,7 @@ __device__ void uv_gscore(int v, int u, int& score, csr_device_t& G) {
       score = score + 1;
   }
 }
+  
 template <typename csr_device_t>
 int gscore(csr_device_t& G, std::shared_ptr<cuda::multi_context_t> context = std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0))) {
   std::shared_ptr<cuda::standard_context_t> scontext =
@@ -123,13 +161,92 @@ void apply_permutation(coo_device_t& G,
   l.launch_blocked(*scontext, permute, (std::size_t)M);
   scontext->synchronize();
 }
+  
+  template <typename coo_device_t,typename coo_host_t>
+void edge_order(coo_device_t& G,
+               coo_device_t& rG,
+		coo_host_t& Gh,
+               std::shared_ptr<cuda::multi_context_t> context) {
+  int N = G.number_of_rows;
+  int M = G.number_of_nonzeros;
+  auto I = thrust::raw_pointer_cast(Gh.row_indices.data());
+  auto J = thrust::raw_pointer_cast(Gh.column_indices.data());
 
+  thrust::host_vector<int> Seen(N,0);
+  thrust::host_vector<int> perm(N);
+  /*
+  for(int i = 0, j = 0, k = N-1; i < M; ++i) {
+    auto a = I[i];
+    auto b = J[i];
+    if(!Seen[a] && !Seen[b]) {
+      Seen[a] = 1;
+      perm[j++] = a;
+      Seen[b] = 1;
+      perm[j++] = b;
+    }
+    if(!Seen[a]){
+      Seen[a] = 1;
+      perm[k--] = a;
+    }
+    else if(!Seen[b]){
+      Seen[b] = 1;
+      perm[k--] = b;
+    }
+  }
+  */
+  
+  int j = 0;
+  for(int i = 0; i < M; ++i) {
+    auto a = I[i];
+    auto b = J[i];
+    if(!Seen[a] && !Seen[b]) {
+      Seen[a] = 1;
+      perm[j++] = a;
+      Seen[b] = 1;
+      perm[j++] = b;
+    }
+  }
+  for(int i = 0; i < M; ++i){
+    auto a = I[i];
+    auto b = J[i];
+    
+    if(!Seen[a]){
+      Seen[a] = 1;
+      perm[j++] = a;
+    }
+    else if(!Seen[b]){
+      Seen[b] = 1;
+      perm[j++] = b;
+      }
+  }
+  
+  thrust::device_vector<int> permutation(N);
+  permutation = perm;
+
+  apply_permutation(G, rG, context, permutation);
+  
+}
+  
 template <typename coo_device_t>
 void uniquify2(coo_device_t& G,
                coo_device_t& rG,
                std::shared_ptr<cuda::multi_context_t> context) {
   int N = G.number_of_rows;
   int M = G.number_of_nonzeros;
+
+  // test
+  thrust::device_vector<int> rperm(M);
+  thrust::default_random_engine g(3);
+
+  thrust::sequence(rperm.begin(), rperm.end());
+  thrust::shuffle(rperm.begin(), rperm.end(), g);
+  thrust::sort_by_key(rperm.begin(), rperm.end(), G.row_indices.begin());
+  thrust::sort_by_key(rperm.begin(), rperm.end(), G.column_indices.begin());
+  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.row_indices.begin());
+  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.column_indices.begin());
+
+  // test
+
   thrust::device_vector<int> permutation(2 * M);
   thrust::device_vector<int> IJ(2 * M);
   thrust::copy(G.row_indices.begin(), G.row_indices.end(), IJ.begin());
@@ -200,6 +317,8 @@ void random(coo_device_t& G,
   thrust::sequence(permutation.begin(), permutation.end());
   thrust::shuffle(permutation.begin(), permutation.end(), g);
 
+  //  thrust::sort(permutation.begin(), permutation.end());
+  // printf("PERM SUM %i\n", thrust::reduce(permutation.begin(),permutation.end()));
   // thrust::gather(permutation.begin(), permutation.end(),
   // G.row_indices.begin(),
   //             rG.row_indices.begin());
@@ -219,6 +338,19 @@ void uniquify(coo_device_t& G,
   int N = G.number_of_rows;
   int MM = 2 * M;
 
+  /*
+  thrust::device_vector<int> rperm(M);
+  thrust::default_random_engine g(1);
+
+  thrust::sequence(rperm.begin(), rperm.end());
+  thrust::shuffle(rperm.begin(), rperm.end(), g);
+  thrust::sort_by_key(rperm.begin(), rperm.end(), G.row_indices.begin());
+  thrust::sort_by_key(rperm.begin(), rperm.end(), G.column_indices.begin());
+  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.row_indices.begin());
+  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.column_indices.begin());
+  */
+   
+
   thrust::device_vector<int> dkeys(N, std::numeric_limits<int>::max());
   thrust::device_vector<int> zp(MM, -1);
 
@@ -232,10 +364,14 @@ void uniquify(coo_device_t& G,
   int* p = thrust::raw_pointer_cast(zp.data());
 
   auto make_keys = [=] __device__(int const& tid, int const& bid) {
-    if (tid < M)
-      pk[I[tid]] = pk[I[tid]] > tid ? tid : pk[I[tid]];
-    else {
-      pk[J[tid - M]] = pk[J[tid - M]] > tid ? tid : pk[J[tid - M]];
+    if (tid < M) {
+      // pk[I[tid]] = pk[I[tid]] > tid ? tid : pk[I[tid]];
+      if (pk[I[tid]] == std::numeric_limits<int>::max())
+        pk[I[tid]] = tid;
+    } else {
+      // pk[J[tid - M]] = pk[J[tid - M]] > tid ? tid : pk[J[tid - M]];
+      if (pk[J[tid - M]] == std::numeric_limits<int>::max())
+        pk[J[tid - M]] = tid;
     }
   };
 
@@ -275,6 +411,19 @@ void uniquify(coo_device_t& G,
 
   l.launch_blocked(*scontext, permute, (std::size_t)M);
   scontext->synchronize();
+
+  /*
+  thrust::device_vector<int> rperm(M);
+  //thrust::default_random_engine g(3);
+
+  thrust::sequence(rperm.begin(), rperm.end());
+  //thrust::shuffle(rperm.begin(), rperm.end(), g);
+  thrust::sort_by_key(rG.row_indices.begin(), rG.row_indices.end(), rperm.begin());
+  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.row_indices.begin());
+  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.column_indices.begin());
+  */
+  
+  
   /*thrust::sort(zp.begin(),zp.end());
   printf("NN = %i Reduce = %i
   \n",999*1000/2,thrust::reduce(zp.begin(),zp.begin()+1000));

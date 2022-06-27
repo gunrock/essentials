@@ -55,6 +55,7 @@ set(LIBRARY_OUTPUT_PATH
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
+
 ############ ADD LIBRARY: ESSENTIALS (HEADER-ONLY) ############
 add_library(essentials INTERFACE)
 
@@ -74,6 +75,13 @@ set_target_properties(essentials
     CUDA_ARCHITECTURES 61 # Set required architecture.
     # CUDA_PTX_COMPILATION ON # Can only be applied to OBJ.
 )
+
+include(FetchContent)
+
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.10.5/json.tar.xz)
+FetchContent_MakeAvailable(json)
+
+target_link_libraries(essentials INTERFACE nlohmann_json::nlohmann_json)
 
 # Use for later.
 get_target_property(ESSENTIALS_ARCHITECTURES 
