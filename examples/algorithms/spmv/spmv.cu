@@ -206,7 +206,7 @@ void test_spmv(int num_arguments, char** argument_array) {
   auto sectorCSC = GS == "SECCSC" ? graph::reorder::avgCacheLinesCSC(cG, 8) : 0;
   printf("SECCSC %llu\n", sectorCSC);
 
-  auto sectorNbr = GS == "NBR" ? graph::reorder::avgCacheNbr(G, 8) : 0;
+  auto sectorNbr = GS == "NBR" ? graph::reorder::avgCacheNbr(G, 32) : 0;
   printf("SecNbr %f\n", sectorNbr);
 
   std::string fname = reorder + "_" + GS + "_spmv_results.json";
