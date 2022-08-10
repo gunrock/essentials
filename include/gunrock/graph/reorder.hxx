@@ -110,6 +110,7 @@ __device__ void cacheNbr_score(int v,
       if (cur_sec == prev_sector) {
         continue;
       } else {
+        prev_sector = cur_sec;
         unique_sectors++;
       }
     }
@@ -145,7 +146,7 @@ float avgCacheNbr(
   for (int i = 0; i < 10; ++i) {
     printf(" %llu ", hpcache[i]);
   }
-  
+
   auto score = thrust::reduce(scores.begin(), scores.end());
   return score / (float)N;
 }
