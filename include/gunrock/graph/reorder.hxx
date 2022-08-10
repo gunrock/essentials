@@ -141,6 +141,11 @@ float avgCacheNbr(
   l.launch_blocked(*scontext, cache_scores, N);
   scontext->synchronize();
 
+  thrust::host_vector<unsigned long long> hpcache(scores);
+  for (int i = 0; i < 10; ++i) {
+    printf(" %llu ", hpcache[i]);
+  }
+  
   auto score = thrust::reduce(scores.begin(), scores.end());
   return score / (float)N;
 }

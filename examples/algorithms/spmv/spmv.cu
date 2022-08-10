@@ -176,8 +176,10 @@ void test_spmv(int num_arguments, char** argument_array) {
   // printf("build Graph:%f \n",b2-b1);
   // --
   // GPU Run
-  float gpu_elapsed = gunrock::spmv::run(G, x.data().get(), y.data().get());
-
+  float gpu_elapsed = 0.0f;
+  if (reorder != "nore") {
+    gpu_elapsed = gunrock::spmv::run(G, x.data().get(), y.data().get());
+  }
   // gunrock::print::head(cooO.row_indices, 40, "cooO");
   // gunrock::print::head(coo.row_indices, 40, "coo");
   // gunrock::print::head(coo2.row_indices, 40, "coo2");
