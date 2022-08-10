@@ -15,8 +15,8 @@
 #include <gunrock/algorithms/algorithms.hxx>
 #include <sys/time.h>
 
-/*double getTime() {                                                         struct timeval tv;                                                      gettimeofday(&tv, 0);                                                   return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
-  } */ 
+//double getTime() {                                                         struct timeval tv;                                                      gettimeofday(&tv, 0);                                                   return tv.tv_sec * 1000.0 + tv.tv_usec / 1000.0;
+//} 
 
 namespace gunrock {
 namespace spmv {
@@ -77,6 +77,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
     // TODO: Use a parameter (enum) to select between the two:
     // Maybe use the existing advance_direction_t enum.
     pull(context);
+    // push(context);
   }
 
   void push(cuda::multi_context_t& context) {
@@ -97,15 +98,17 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
       math::atomic::add(&(y[source]), weight * x[neighbor]);
       return false;  // ignored.
     };
-
     // Perform advance on the above lambda-op
+    auto t1 = getTime();
     operators::advance::execute<
-        operators::load_balance_t::block_mapped,
+        operators::load_balance_t::merge_path,
         operators::advance_direction_t::forward,  // direction (backward for
                                                   // transpose)
         operators::advance_io_type_t::graph,      // entire graph as input
         operators::advance_io_type_t::none>(      // no output frontier needed
         G, E, spmv, context);
+    auto t2 = getTime();
+    printf("advance took %f \n", t2-t1);
   }
 
   void pull(cuda::multi_context_t& context) {

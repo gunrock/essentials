@@ -11,17 +11,17 @@ do
         test_datasets=(${test_datasets[*]} "$dir_name")
     fi
 done
-i=0
+#i=0
 for dataset in  "${test_datasets[@]}"
 do
-    $exe_file "reorder" $DATADIR$dataset/$dataset.mtx "noGS"
-    $exe_file "random" $DATADIR$dataset/$dataset.mtx  "noGS"
+    $exe_file "reorder" $DATADIR$dataset/$dataset.mtx "GS"
+    $exe_file "random" $DATADIR$dataset/$dataset.mtx  "GS"
     ((i++))
-    if [[ $i -gt 10 ]]
-    then
-	break
-    else
-	echo "hi"
-    fi
+ #   if [[ $i -gt 100 ]]
+  #  then
+#	break
+ #   else
+#	echo "hi"
+ #   fi
       
 done

@@ -53,7 +53,7 @@ void test_sssp(int num_arguments, char** argument_array) {
   srand(time(NULL));
 
   vertex_t n_vertices = G.get_number_of_vertices();
-  vertex_t single_source = 0;  // rand() % n_vertices;
+  vertex_t single_source = 483998; //1549256;  // rand() % n_vertices;
   std::cout << "Single Source = " << single_source << std::endl;
 
   // --

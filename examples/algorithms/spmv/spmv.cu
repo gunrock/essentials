@@ -44,23 +44,51 @@ void test_spmv(int num_arguments, char** argument_array) {
   using csr_t =
       format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   csr_t csr;
+  using csc_t =
+      format::csr_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
+  csr_t csc;
+  
   using coo_t =
       format::coo_t<memory_space_t::device, vertex_t, edge_t, weight_t>;
   coo_t coo = mm.load(filename);
   //auto cooO = coo;
   float reorder_time = 0;
   auto copyTime = getTime();
-  coo_t coo2 = coo;
-  auto copyTime2 = getTime();
-  printf("copy time is %f\n", copyTime2 - copyTime);
   
-
+  coo_t coo2;
   if(reorder != "nore"){
+    coo2 = coo;
+    auto copyTime2 = getTime();
+    printf("copy time is %f\n", copyTime2 - copyTime);
+  
     auto context =
       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0));
-    graph::reorder::random(coo2, coo, context);
-    if(GS.find("write") != std::string::npos) {
-      //  graph::reorder::random(coo2, coo, context);
+    //graph::reorder::random(coo2, coo, context);
+    
+    if(GS.find("write_random") != std::string::npos) {
+      graph::reorder::random(coo2, coo, context);
+      //      graph::reorder::uniquify(
+      //		       coo, coo2,
+      //		       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
+      using coo_t =
+	format::coo_t<memory_space_t::host, vertex_t, edge_t, weight_t>;
+      coo_t cooh = coo;
+      graph::reorder::write_mtx(cooh,GS.c_str());
+      return;
+    }
+    if(GS.find("strided") != std::string::npos) {
+      // graph::reorder::random(coo2, coo, context);
+      graph::reorder::uniquify_strided(
+			       coo, coo2,
+			       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
+      using coo_t =
+	format::coo_t<memory_space_t::host, vertex_t, edge_t, weight_t>;
+      coo_t cooh = coo2;
+      graph::reorder::write_mtx(cooh,GS.c_str());
+      return;
+    }
+    if(GS.find("write_reorder") != std::string::npos) {
+      //graph::reorder::random(coo2, coo, context);
       graph::reorder::uniquify(
 			       coo, coo2,
 			       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
@@ -75,21 +103,24 @@ void test_spmv(int num_arguments, char** argument_array) {
       using coo_t =
 	format::coo_t<memory_space_t::host, vertex_t, edge_t, weight_t>;
 
-      coo_t cooh = coo;
+      coo_t cooh = mm.load(filename);
       graph::reorder::edge_order(
 				 coo, coo2,cooh,
 			       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
 
-      cooh = coo2;
-      graph::reorder::write_mtx(cooh,GS.c_str());
+      //cooh = coo2;
+      //graph::reorder::write_mtx(cooh,GS.c_str());
       return;
     }
     // auto t1 = getTime();
     reorderTimer.begin();
     if (reorder == "reorder") {         
       graph::reorder::uniquify(
-			       coo, coo2,
-			       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
+      	       coo, coo2,
+      	       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
+      //  graph::reorder::degree(
+      //       coo, coo2,
+      //       std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0)));
     }
     // graph::reorder::uniquify2(coo, coo2);
     // graph::reorder::random(coo, coo2);
@@ -102,6 +133,8 @@ void test_spmv(int num_arguments, char** argument_array) {
   if(reorder == "reorder")
     csr.from_coo(coo2);
   else csr.from_coo(coo);
+
+  //csc.from_coo(coo);
   
   auto tt2 = getTime();
   auto buildcsr = tt2 - tt;
@@ -121,6 +154,10 @@ void test_spmv(int num_arguments, char** argument_array) {
       csr.number_of_rows, csr.number_of_columns, csr.number_of_nonzeros,
       csr.row_offsets.data().get(), csr.column_indices.data().get(),
       csr.nonzero_values.data().get());
+
+  thrust::device_vector<vertex_t> row_indices(csr.number_of_nonzeros);
+  thrust::device_vector<vertex_t> column_indices(csr.number_of_nonzeros);
+  thrust::device_vector<edge_t> column_offsets(csr.number_of_columns + 1);
 
   // --
   // Params and memory allocation
@@ -143,9 +180,27 @@ void test_spmv(int num_arguments, char** argument_array) {
   std::cout << "GPU Elapsed Time : " << gpu_elapsed << " (ms)" << std::endl;
 
   using json = nlohmann::json;
-  
-  auto gs = GS == "GS" ? graph::reorder::gscore(G) : 0;
-  printf("GSCORE %i\n", gs);
+
+  auto cG = graph::build::from_csr<memory_space_t::device, graph::view_t::csc>(csr.number_of_rows, csr.number_of_columns, csr.number_of_nonzeros,
+  csr.row_offsets.data().get(), csr.column_indices.data().get(),
+   csr.nonzero_values.data().get(), row_indices.data().get(), column_offsets.data().get());
+
+  //auto gs = 0;
+  auto gs = GS == "AID" ? graph::reorder::aid(cG) : 0;
+  printf("AID %llu\n", gs);
+
+  auto ggs = GS == "AIDCSR" ? graph::reorder::aidCSR(G) : 0;
+  printf("AIDCSR %llu\n", ggs);
+
+  auto sectorCSR = GS == "SECCSR" ? graph::reorder::avgCacheLinesCSR(G,8) : 0;
+  printf("SECCSR %llu\n", sectorCSR);
+
+  auto sectorCSC = GS == "SECCSC" ? graph::reorder::avgCacheLinesCSC(cG,8) : 0;
+  printf("SECCSC %llu\n", sectorCSC);
+
+  auto sectorNbr = GS == "NBR" ? graph::reorder::avgCacheNbr(G,8) : 0;
+  printf("SecNbr %f\n", sectorNbr);
+
   std::string fname = reorder + "_" + GS + "_spmv_results.json";
   bool output_file_exist = std::filesystem::exists(std::string("./") + fname);
   std::fstream output(std::string("./") + fname, std::ios::app);
