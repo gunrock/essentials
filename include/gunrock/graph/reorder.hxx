@@ -98,24 +98,22 @@ __device__ void cacheNbr_score(int v,
                                float& score,
                                csr_device_t& G,
                                int stride = 8) {
-  auto Vnum_neighbors = G.get_number_of_neighbors(v);
+  auto num_neighbors = G.get_number_of_neighbors(v);
 
-  if (Vnum_neighbors >= 1) {
-    auto Vstart = G.get_starting_edge(v);
-    // auto s1 = G.get_source_vertex(Vstart);
-    // auto s2 = G.get_source_vertex(Vstart+1);
-    // score = (s1 > s2) ? s1 - s2 : s2 - s1;
-    int sum = 0;
-    int seen = 0;
-    for (auto Vvi = Vstart; Vvi < Vstart + Vnum_neighbors; Vvi++) {
-      auto sec = G.get_destination_vertex(Vvi) / stride;
-      if (!(seen & sec == sec)) {
-        seen = seen | sec;
-        sum = sum + 1;
+  if (num_neighbors >= 1) {
+    auto start = G.get_starting_edge(v);
+    uint32_t unique_sectors = 1;
+    // assuming CSR is sorted
+    auto prev_sector = G.get_destination_vertex(0) / stride;
+    for (auto i = 1; i < num_neighbors; i++) {
+      auto cur_sec = G.get_destination_vertex(start + i) / stride;
+      if (cur_sec == prev_sector) {
+        continue;
+      } else {
+        unique_sectors++;
       }
     }
-    // printf("%f hiii", score);
-    score = (float)sum / (float)Vnum_neighbors;
+    score = (float)unique_sectors / (float)num_neighbors;
   }
 }
 
@@ -190,34 +188,35 @@ unsigned long long avgCacheLinesCSR(
   return score / N;
 }
 
-  template <typename csc_device_t>
-  __device__ void aid_score(int v, unsigned long long& score, csc_device_t& G) {
-
-    auto Vnum_neighbors = G.get_number_of_neighbors(v);
-    if(Vnum_neighbors >= 2) {
-      auto Vstart = G.get_starting_edge(v);
-      auto s1 = G.get_source_vertex(Vstart);
-      auto s2 = G.get_source_vertex(Vstart+1);
-      score = (s1 > s2) ? s1 - s2 : s2 - s1;
-    
-      for (auto Vvi = Vstart+2; Vvi < Vstart + Vnum_neighbors; Vvi++) {
-	auto pVwi = G.get_source_vertex(Vvi-1);
-	auto Vwi = G.get_source_vertex(Vvi);
-	score = score + ((pVwi > Vwi) ? pVwi - Vwi : Vwi - pVwi);
-	
-      }
-      score = score / Vnum_neighbors;
-    }
-  }
-  
 template <typename csc_device_t>
-unsigned long long aid(csc_device_t& G, std::shared_ptr<cuda::multi_context_t> context = std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0))) {
+__device__ void aid_score(int v, unsigned long long& score, csc_device_t& G) {
+  auto Vnum_neighbors = G.get_number_of_neighbors(v);
+  if (Vnum_neighbors >= 2) {
+    auto Vstart = G.get_starting_edge(v);
+    auto s1 = G.get_source_vertex(Vstart);
+    auto s2 = G.get_source_vertex(Vstart + 1);
+    score = (s1 > s2) ? s1 - s2 : s2 - s1;
+
+    for (auto Vvi = Vstart + 2; Vvi < Vstart + Vnum_neighbors; Vvi++) {
+      auto pVwi = G.get_source_vertex(Vvi - 1);
+      auto Vwi = G.get_source_vertex(Vvi);
+      score = score + ((pVwi > Vwi) ? pVwi - Vwi : Vwi - pVwi);
+    }
+    score = score / Vnum_neighbors;
+  }
+}
+
+template <typename csc_device_t>
+unsigned long long aid(
+    csc_device_t& G,
+    std::shared_ptr<cuda::multi_context_t> context =
+        std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0))) {
   std::shared_ptr<cuda::standard_context_t> scontext =
       std::shared_ptr<cuda::standard_context_t>(context->get_context(0));
 
   int N = G.get_number_of_vertices();
   thrust::device_vector<unsigned long long> scores(N, 0);
-  unsigned long long * paid = thrust::raw_pointer_cast(scores.data());
+  unsigned long long* paid = thrust::raw_pointer_cast(scores.data());
 
   using namespace cuda::launch_box;
   using launch_t =
@@ -234,34 +233,37 @@ unsigned long long aid(csc_device_t& G, std::shared_ptr<cuda::multi_context_t> c
   return score;
 }
 
-  template <typename csr_device_t>
-  __device__ void aidCSR_score(int v, unsigned long long& score, csr_device_t& G) {
-
-    auto Vnum_neighbors = G.get_number_of_neighbors(v);
-    if(Vnum_neighbors >= 2) {
-      auto Vstart = G.get_starting_edge(v);
-      auto s1 = G.get_destination_vertex(Vstart);
-      auto s2 = G.get_destination_vertex(Vstart+1);
-      score = (s1 > s2) ? s1 - s2 : s2 - s1;
-    
-      for (auto Vvi = Vstart+2; Vvi < Vstart + Vnum_neighbors; Vvi++) {
-	auto pVwi = G.get_destination_vertex(Vvi-1);
-	auto Vwi = G.get_destination_vertex(Vvi);
-	score = score + ((pVwi > Vwi) ? pVwi - Vwi : Vwi - pVwi);
-	
-      }
-      score = score / Vnum_neighbors;
-    }
-  }
-  
 template <typename csr_device_t>
-unsigned long long aidCSR(csr_device_t& G, std::shared_ptr<cuda::multi_context_t> context = std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0))) {
+__device__ void aidCSR_score(int v,
+                             unsigned long long& score,
+                             csr_device_t& G) {
+  auto Vnum_neighbors = G.get_number_of_neighbors(v);
+  if (Vnum_neighbors >= 2) {
+    auto Vstart = G.get_starting_edge(v);
+    auto s1 = G.get_destination_vertex(Vstart);
+    auto s2 = G.get_destination_vertex(Vstart + 1);
+    score = (s1 > s2) ? s1 - s2 : s2 - s1;
+
+    for (auto Vvi = Vstart + 2; Vvi < Vstart + Vnum_neighbors; Vvi++) {
+      auto pVwi = G.get_destination_vertex(Vvi - 1);
+      auto Vwi = G.get_destination_vertex(Vvi);
+      score = score + ((pVwi > Vwi) ? pVwi - Vwi : Vwi - pVwi);
+    }
+    score = score / Vnum_neighbors;
+  }
+}
+
+template <typename csr_device_t>
+unsigned long long aidCSR(
+    csr_device_t& G,
+    std::shared_ptr<cuda::multi_context_t> context =
+        std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0))) {
   std::shared_ptr<cuda::standard_context_t> scontext =
       std::shared_ptr<cuda::standard_context_t>(context->get_context(0));
 
   int N = G.get_number_of_vertices();
   thrust::device_vector<unsigned long long> scores(N, 0);
-  unsigned long long * paid = thrust::raw_pointer_cast(scores.data());
+  unsigned long long* paid = thrust::raw_pointer_cast(scores.data());
 
   using namespace cuda::launch_box;
   using launch_t =
@@ -277,13 +279,12 @@ unsigned long long aidCSR(csr_device_t& G, std::shared_ptr<cuda::multi_context_t
   auto score = thrust::reduce(scores.begin(), scores.end());
   return score;
 }
-  
-  
+
 template <typename csr_device_t>
 __device__ void uv_gscore(int v, int u, int& score, csr_device_t& G) {
   //  score = 0;
   int N = G.get_number_of_vertices();
-  if(u < N){
+  if (u < N) {
     auto Vnum_neighbors = G.get_number_of_neighbors(v);
     auto Vstart = G.get_starting_edge(v);
     for (auto Vvi = Vstart; Vvi < Vstart + Vnum_neighbors; Vvi++) {
@@ -313,9 +314,12 @@ __device__ void uv_gscore(int v, int u, int& score, csr_device_t& G) {
       score = score + 1;
   }
 }
-  
+
 template <typename csr_device_t>
-int gscore(csr_device_t& G, std::shared_ptr<cuda::multi_context_t> context = std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0))) {
+int gscore(
+    csr_device_t& G,
+    std::shared_ptr<cuda::multi_context_t> context =
+        std::shared_ptr<cuda::multi_context_t>(new cuda::multi_context_t(0))) {
   std::shared_ptr<cuda::standard_context_t> scontext =
       std::shared_ptr<cuda::standard_context_t>(context->get_context(0));
 
@@ -385,21 +389,21 @@ void apply_permutation(coo_device_t& G,
   l.launch_blocked(*scontext, permute, (std::size_t)M);
   scontext->synchronize();
 }
-  
-  template <typename coo_device_t,typename coo_host_t>
+
+template <typename coo_device_t, typename coo_host_t>
 void edge_order(coo_device_t& G,
-               coo_device_t& rG,
-		coo_host_t& Gh,
-               std::shared_ptr<cuda::multi_context_t> context) {
+                coo_device_t& rG,
+                coo_host_t& Gh,
+                std::shared_ptr<cuda::multi_context_t> context) {
   int N = Gh.number_of_rows;
   int M = Gh.number_of_nonzeros;
   auto I = thrust::raw_pointer_cast(Gh.row_indices.data());
   auto J = thrust::raw_pointer_cast(Gh.column_indices.data());
 
   //  printf("%i %i\n",Gh.row_indices.size(),Gh.row_indices.size());
-  thrust::host_vector<int> Seen(N,0);
+  thrust::host_vector<int> Seen(N, 0);
   thrust::host_vector<int> perm(N);
-  
+
   /*  for(int i = 0, j = 0, k = N-1; i < M; ++i) {
     auto a = *(I+i);
     auto b = *(J+i);
@@ -420,37 +424,36 @@ void edge_order(coo_device_t& G,
     }*/
   int j = 0;
   int ii = 0;
-  for(int i = 0; i < M; ++i) {
+  for (int i = 0; i < M; ++i) {
     auto a = I[i];
     auto b = J[i];
-    if(a != b) {
-      //if(a >= N || b >= N) printf("A %i B %i \n",a,b);
-      if(!Seen[a] && !Seen[b]) {
-	Seen[a] = 1;
-	++ii;
-	perm[j++] = a;
-	if(a != b){
-	  Seen[b] = 1;
-	  perm[j++] = b;
-	}
+    if (a != b) {
+      // if(a >= N || b >= N) printf("A %i B %i \n",a,b);
+      if (!Seen[a] && !Seen[b]) {
+        Seen[a] = 1;
+        ++ii;
+        perm[j++] = a;
+        if (a != b) {
+          Seen[b] = 1;
+          perm[j++] = b;
+        }
       }
     }
   }
-  
+
   //  fflush(stdout);
- 
-  for(int i = 0; i < M; ++i){
+
+  for (int i = 0; i < M; ++i) {
     auto a = I[i];
     auto b = J[i];
-    if(a != b) {
-    if(!Seen[a]){
-      ++ii;
-      Seen[a] = 1;
-      perm[j++] = a;
-    }
-    else if(!Seen[b]){
-      Seen[b] = 1;
-      perm[j++] = b;
+    if (a != b) {
+      if (!Seen[a]) {
+        ++ii;
+        Seen[a] = 1;
+        perm[j++] = a;
+      } else if (!Seen[b]) {
+        Seen[b] = 1;
+        perm[j++] = b;
       }
     }
   }
@@ -460,7 +463,7 @@ void edge_order(coo_device_t& G,
   printf("N = %i, M = %i, VC found = %i, |I| = %i \n", N, M, j, ii);
   apply_permutation(G, rG, context, permutation);
 }
-  
+
 template <typename coo_device_t>
 void uniquify2(coo_device_t& G,
                coo_device_t& rG,
@@ -545,7 +548,7 @@ void random(coo_device_t& G,
             coo_device_t& rG,
             std::shared_ptr<cuda::multi_context_t> context) {
   int M = G.number_of_nonzeros;
-  //test
+  // test
   /*
   thrust::device_vector<int> rperm(M);
   thrust::default_random_engine gg(1);
@@ -569,7 +572,8 @@ void random(coo_device_t& G,
   thrust::shuffle(permutation.begin(), permutation.end(), g);
 
   //  thrust::sort(permutation.begin(), permutation.end());
-  // printf("PERM SUM %i\n", thrust::reduce(permutation.begin(),permutation.end()));
+  // printf("PERM SUM %i\n",
+  // thrust::reduce(permutation.begin(),permutation.end()));
   // thrust::gather(permutation.begin(), permutation.end(),
   // G.row_indices.begin(),
   //             rG.row_indices.begin());
@@ -589,23 +593,21 @@ void uniquify(coo_device_t& G,
   int N = G.number_of_rows;
   int MM = 2 * M;
 
-  
-  //test
-  
-  thrust::device_vector<int> rperm1(G.column_indices),
-    rperm2(G.column_indices),rperm3(G.column_indices),rperm4(G.column_indices);
+  // test
+
+  thrust::device_vector<int> rperm1(G.column_indices), rperm2(G.column_indices),
+      rperm3(G.column_indices), rperm4(G.column_indices);
   //  thrust::default_random_engine g(1);
-  //rperm = G.column_indices;
-  //thrust::sequence(rperm.begin(), rperm.end());
-  //thrust::shuffle(rperm.begin(), rperm.end(), g);
+  // rperm = G.column_indices;
+  // thrust::sequence(rperm.begin(), rperm.end());
+  // thrust::shuffle(rperm.begin(), rperm.end(), g);
   /*
   thrust::sort_by_key(rperm1.begin(), rperm1.end(), G.row_indices.begin());
   thrust::sort_by_key(rperm2.begin(), rperm2.end(), G.column_indices.begin());
   thrust::sort_by_key(rperm3.begin(), rperm3.end(), rG.row_indices.begin());
   thrust::sort_by_key(rperm4.begin(), rperm4.end(), rG.column_indices.begin());
   */
-  //test
-  
+  // test
 
   thrust::device_vector<int> dkeys(N, std::numeric_limits<int>::max());
   thrust::device_vector<int> zp(MM, -1);
@@ -622,17 +624,17 @@ void uniquify(coo_device_t& G,
   auto make_keys = [=] __device__(int const& tid, int const& bid) {
     if (tid < M) {
       // pk[I[tid]] = pk[I[tid]] > tid ? tid : pk[I[tid]];
-      //if (pk[I[tid]] == std::numeric_limits<int>::max())
-      //pk[I[tid]] = tid;
-      //if(pk[I[tid]] > tid)
-      //pk[I[tid]] = tid;
-      atomicMin(&(pk[I[tid]]),tid);
+      // if (pk[I[tid]] == std::numeric_limits<int>::max())
+      // pk[I[tid]] = tid;
+      // if(pk[I[tid]] > tid)
+      // pk[I[tid]] = tid;
+      atomicMin(&(pk[I[tid]]), tid);
     } else {
       // pk[J[tid - M]] = pk[J[tid - M]] > tid ? tid : pk[J[tid - M]];
-      //if (pk[J[tid - M]] == std::numeric_limits<int>::max())
-      //if(pk[J[tid-M]] > tid)
+      // if (pk[J[tid - M]] == std::numeric_limits<int>::max())
+      // if(pk[J[tid-M]] > tid)
       //	pk[J[tid - M]] = tid;
-      atomicMin(&(pk[J[tid-M]]),tid);
+      atomicMin(&(pk[J[tid - M]]), tid);
     }
   };
 
@@ -679,21 +681,21 @@ void uniquify(coo_device_t& G,
 
   thrust::sequence(rperm.begin(), rperm.end());
   //thrust::shuffle(rperm.begin(), rperm.end(), g);
-  thrust::sort_by_key(rG.row_indices.begin(), rG.row_indices.end(), rperm.begin());
-  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.row_indices.begin());
-  thrust::sort_by_key(rperm.begin(), rperm.end(), rG.column_indices.begin());
+  thrust::sort_by_key(rG.row_indices.begin(), rG.row_indices.end(),
+  rperm.begin()); thrust::sort_by_key(rperm.begin(), rperm.end(),
+  rG.row_indices.begin()); thrust::sort_by_key(rperm.begin(), rperm.end(),
+  rG.column_indices.begin());
   */
-  
-  
+
   /*thrust::sort(zp.begin(),zp.end());
   printf("NN = %i Reduce = %i
   \n",999*1000/2,thrust::reduce(zp.begin(),zp.begin()+1000));
   gunrock::print::head(zp, 40, "IJ-permvector");*/
 }
-  template <typename coo_device_t>
+template <typename coo_device_t>
 void uniquify_strided(coo_device_t& G,
-              coo_device_t& rG,
-              std::shared_ptr<cuda::multi_context_t> context) {
+                      coo_device_t& rG,
+                      std::shared_ptr<cuda::multi_context_t> context) {
   //
   std::shared_ptr<cuda::standard_context_t> scontext =
       std::shared_ptr<cuda::standard_context_t>(context->get_context(0));
@@ -701,11 +703,10 @@ void uniquify_strided(coo_device_t& G,
   int N = G.number_of_rows;
   int MM = 2 * M;
 
-  
-  //test
-  
-  //thrust::device_vector<int> rperm1(G.column_indices),
-  //rperm2(G.column_indices),rperm3(G.column_indices),rperm4(G.column_indices);
+  // test
+
+  // thrust::device_vector<int> rperm1(G.column_indices),
+  // rperm2(G.column_indices),rperm3(G.column_indices),rperm4(G.column_indices);
 
   thrust::device_vector<int> dkeys(N, std::numeric_limits<int>::max());
   thrust::device_vector<int> zp(MM, -1);
@@ -721,11 +722,11 @@ void uniquify_strided(coo_device_t& G,
 
   auto make_keys = [=] __device__(int const& tid, int const& bid) {
     if (tid < M) {
-      if(pk[I[tid]] > tid)
-	pk[I[tid]] = tid;
+      if (pk[I[tid]] > tid)
+        pk[I[tid]] = tid;
     } else {
-      if(pk[J[tid-M]] > tid)
-	pk[J[tid - M]] = tid;
+      if (pk[J[tid - M]] > tid)
+        pk[J[tid - M]] = tid;
     }
   };
 
@@ -765,13 +766,12 @@ void uniquify_strided(coo_device_t& G,
     rJ[tid] = transP[J[tid]];
   };
 
-  
   auto transpose = [=] __device__(int const& tid, int const& bi) {
-    if(tid % 8 == 0) {
+    if (tid % 8 == 0) {
       transP[tid] = izp[(tid + 8) % N];
-      //transP[(tid + 8) % N] = izp[tid];
-    }
-    else transP[tid] = izp[tid];
+      // transP[(tid + 8) % N] = izp[tid];
+    } else
+      transP[tid] = izp[tid];
   };
 
   l.launch_blocked(*scontext, inverse, (std::size_t)N);
@@ -780,11 +780,9 @@ void uniquify_strided(coo_device_t& G,
   l.launch_blocked(*scontext, transpose, (std::size_t)N);
   scontext->synchronize();
 
-
   l.launch_blocked(*scontext, permute, (std::size_t)M);
   scontext->synchronize();
-
-  }
+}
 }  // namespace reorder
 }  // namespace graph
 }  // namespace gunrock

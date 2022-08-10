@@ -206,9 +206,9 @@ struct matrix_market_t {
 
     fclose(file);
 
-    return coo;
-    /*  // Construct row/col iterators to traverse.
-        auto begin = thrust::make_zip_iterator(thrust::make_tuple(
+    // return coo;
+    // Construct row/col iterators to traverse.
+    auto begin = thrust::make_zip_iterator(thrust::make_tuple(
         coo.row_indices.begin(), coo.column_indices.begin()));
     auto end = thrust::make_zip_iterator(
         thrust::make_tuple(coo.row_indices.end(), coo.column_indices.end()));
@@ -217,7 +217,6 @@ struct matrix_market_t {
     thrust::sort_by_key(begin, end, coo.nonzero_values.begin());
 
     return std::move(coo);
-    */
   }
 };
 
