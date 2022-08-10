@@ -187,27 +187,34 @@ void test_spmv(int num_arguments, char** argument_array) {
 
   using json = nlohmann::json;
 
-  auto cG = graph::build::from_csr<memory_space_t::device, graph::view_t::csc>(
-      csr.number_of_rows, csr.number_of_columns, csr.number_of_nonzeros,
-      csr.row_offsets.data().get(), csr.column_indices.data().get(),
-      csr.nonzero_values.data().get(), row_indices.data().get(),
-      column_offsets.data().get());
+  // auto cG = graph::build::from_csr<memory_space_t::device,
+  // graph::view_t::csc>(
+  //     csr.number_of_rows, csr.number_of_columns, csr.number_of_nonzeros,
+  //     csr.row_offsets.data().get(), csr.column_indices.data().get(),
+  //     csr.nonzero_values.data().get(), row_indices.data().get(),
+  //     column_offsets.data().get());
 
   // auto gs = 0;
-  auto gs = GS == "AID" ? graph::reorder::aid(cG) : 0;
-  printf("AID %llu\n", gs);
+  auto gs = 0;
+  // printf("AID %llu\n", gs);
 
-  auto ggs = GS == "AIDCSR" ? graph::reorder::aidCSR(G) : 0;
-  printf("AIDCSR %llu\n", ggs);
+  // auto ggs = GS == "AIDCSR" ? graph::reorder::aidCSR(G) : 0;
+  // printf("AIDCSR %llu\n", ggs);
 
-  auto sectorCSR = GS == "SECCSR" ? graph::reorder::avgCacheLinesCSR(G, 8) : 0;
-  printf("SECCSR %llu\n", sectorCSR);
+  // auto sectorCSR = GS == "SECCSR" ? graph::reorder::avgCacheLinesCSR(G, 8) :
+  // 0; printf("SECCSR %llu\n", sectorCSR);
 
-  auto sectorCSC = GS == "SECCSC" ? graph::reorder::avgCacheLinesCSC(cG, 8) : 0;
-  printf("SECCSC %llu\n", sectorCSC);
+  // auto sectorCSC = GS == "SECCSC" ? graph::reorder::avgCacheLinesCSC(cG, 8) :
+  // 0; printf("SECCSC %llu\n", sectorCSC);
 
-  auto sectorNbr = GS == "NBR" ? graph::reorder::avgCacheNbr(G, 32) : 0;
+  auto sectorNbr = GS == "NBR" ? graph::reorder::avgCacheNbr(G, 8) : 0;
   printf("SecNbr %f\n", sectorNbr);
+
+  // thrust::host_vector<int> h_col_ids(csr.column_indices);
+  // for (int i = 0; i < 200; ++i) {
+  //   printf(" %i ", h_col_ids[i]);
+  // }
+  // printf("\n");
 
   std::string fname = reorder + "_" + GS + "_spmv_results.json";
   bool output_file_exist = std::filesystem::exists(std::string("./") + fname);

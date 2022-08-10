@@ -104,9 +104,16 @@ __device__ void cacheNbr_score(int v,
     auto start = G.get_starting_edge(v);
     uint32_t unique_sectors = 1;
     // assuming CSR is sorted
-    auto prev_sector = G.get_destination_vertex(0) / stride;
+    auto prev_sector = G.get_destination_vertex(start) / stride;
     for (auto i = 1; i < num_neighbors; i++) {
-      auto cur_sec = G.get_destination_vertex(start + i) / stride;
+      auto cur_neighbor = G.get_destination_vertex(start + i);
+      // if ((start + i) < 200) {
+      //   printf("Edge %u: %u -> %u\n", start + i, v, cur_neighbor);
+      // }?
+      auto cur_sec = cur_neighbor / stride;
+      // if (v == check_v) {
+      // printf("%u + %u: %u -> %u\n", start, i, cur_neighbor, cur_sec);
+      // }
       if (cur_sec == prev_sector) {
         continue;
       } else {
@@ -114,6 +121,10 @@ __device__ void cacheNbr_score(int v,
         unique_sectors++;
       }
     }
+    // if (v == check_v) {
+    // printf("%u / %u\n", unique_sectors, num_neighbors);
+    // printf("V: %i, $ = %i\n", check_v, stride);
+    // }
     score = (float)unique_sectors / (float)num_neighbors;
   }
 }
@@ -137,15 +148,16 @@ float avgCacheNbr(
   launch_t l;
 
   auto cache_scores = [=] __device__(int const& tid, int const& bid) {
-    cacheNbr_score(tid, pcache[tid], G);
+    cacheNbr_score(tid, pcache[tid], G, stride);
   };
   l.launch_blocked(*scontext, cache_scores, N);
   scontext->synchronize();
 
-  thrust::host_vector<unsigned long long> hpcache(scores);
+  thrust::host_vector<float> hpcache(scores);
   for (int i = 0; i < 10; ++i) {
-    printf(" %llu ", hpcache[i]);
+    printf(" %f ", hpcache[i]);
   }
+  printf("\n");
 
   auto score = thrust::reduce(scores.begin(), scores.end());
   return score / (float)N;

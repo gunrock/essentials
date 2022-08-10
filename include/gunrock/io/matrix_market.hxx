@@ -207,7 +207,7 @@ struct matrix_market_t {
     fclose(file);
 
     // return coo;
-    // Construct row/col iterators to traverse.
+    // Construct row / col iterators to traverse.
     auto begin = thrust::make_zip_iterator(thrust::make_tuple(
         coo.row_indices.begin(), coo.column_indices.begin()));
     auto end = thrust::make_zip_iterator(
