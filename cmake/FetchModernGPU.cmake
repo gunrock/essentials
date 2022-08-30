@@ -8,8 +8,8 @@ set(FETCHCONTENT_BASE_DIR ${FC_BASE})
 
 FetchContent_Declare(
     moderngpu
-    GIT_REPOSITORY https://github.com/moderngpu/moderngpu.git
-    GIT_TAG        master
+    GIT_REPOSITORY https://github.com/crozhon/moderngpu.git
+    GIT_TAG        hip
 )
 
 FetchContent_GetProperties(moderngpu)
