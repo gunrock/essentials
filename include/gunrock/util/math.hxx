@@ -74,6 +74,10 @@ constexpr const type_t& min(const type_t& a, const type_t& b) {
  */
 namespace atomic {
 
+#ifdef __HIP_DEVICE_COMPILE__
+#define __CUDA_ARCH__
+#endif
+
 template <typename type_t>
 __host__ __device__ __forceinline__ type_t add(type_t* address, type_t value) {
 #ifdef __CUDA_ARCH__
@@ -126,6 +130,12 @@ __host__ __device__ __forceinline__ type_t exch(type_t* address, type_t value) {
   *address = value;  // use std::atomic;
   return old;
 #endif
+
+
+#ifdef __HIP_DEVICE_COMPILE__
+#undef __CUDA_ARCH__
+#endif
+
 }
 
 }  // namespace atomic

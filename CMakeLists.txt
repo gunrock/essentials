@@ -14,7 +14,7 @@
 # ./cmake-[x.xx.x]-linux-x86_64.sh
 # sudo mv cmake-[x.xx.x]-linux-x86_64 /opt/cmake
 # sudo ln -s /opt/cmake/bin/* /usr/local/bin/
-cmake_minimum_required(VERSION 3.20.1 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.21.0 FATAL_ERROR)
 
 # begin /* Update Essentials version */
 set(ESSENTIALS_VERSION_MAJOR 2)
@@ -26,7 +26,7 @@ set(ESSENTIALS_VERSION "${ESSENTIALS_VERSION_MAJOR}.${ESSENTIALS_VERSION_MINOR}.
 
 project(essentials
   VERSION ${ESSENTIALS_VERSION}
-  LANGUAGES CXX C CUDA HIP
+  LANGUAGES CXX C HIP
 )
 
 # begin /* Dependencies directory */
@@ -35,7 +35,7 @@ set(PROJECT_DEPS_DIR externals)
 
 # begin /* Include cmake modules */
 #include(${PROJECT_SOURCE_DIR}/cmake/FetchThrustCUB.cmake)
-include(${PROJECT_SOURCE_DIR}/cmake/FetchModernGPU.cmake)
+#include(${PROJECT_SOURCE_DIR}/cmake/FetchModernGPU.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchCXXOpts.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchRapidJSON.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchNlohmannJson.cmake)
@@ -111,7 +111,7 @@ target_include_directories(essentials
   INTERFACE ${CXXOPTS_INCLUDE_DIR}
   # INTERFACE ${THRUST_INCLUDE_DIR}
   #INTERFACE ${CUB_INCLUDE_DIR}
-  INTERFACE ${MODERNGPU_INCLUDE_DIR}
+  #INTERFACE ${MODERNGPU_INCLUDE_DIR}
   INTERFACE ${RAPIDJSON_INCLUDE_DIR}
   INTERFACE ${NHLOMANN_JSON_INCLUDE_DIR}
   #INTERFACE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}

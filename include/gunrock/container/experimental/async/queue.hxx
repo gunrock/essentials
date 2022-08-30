@@ -1,13 +1,9 @@
 #pragma once
-
 #ifdef __HIP__
 inline __device__ unsigned int __activemask() {
-  unsigned int mask;
-  asm volatile("activemask.b32 %0;" : "=r"(mask));
-  return mask;
+    return __ballot(1);
 }
 #endif
-
 #include "hip/hip_runtime.h"
 
 #include <inttypes.h>

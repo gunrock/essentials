@@ -85,11 +85,12 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
     auto single_source = P->param.single_source;
     auto distances = P->result.distances;
+    auto d_distances = thrust::device_pointer_cast(P->result.distances).get();
     auto visited = P->visited.data().get();
 
     auto iteration = this->iteration;
 
-    auto search = [distances, single_source, iteration] __host__ __device__(
+    auto search = [d_distances, single_source, iteration] __host__ __device__(
                       vertex_t const& source,    // ... source
                       vertex_t const& neighbor,  // neighbor
                       edge_t const& edge,        // edge
@@ -109,7 +110,7 @@ struct enactor_t : gunrock::enactor_t<problem_t> {
 
       // Simpler logic for the above.
       auto old_distance =
-          math::atomic::min(&distances[neighbor], iteration + 1);
+          math::atomic::min(d_distances + neighbor, iteration + 1);
       return (iteration + 1 < old_distance);
     };
 

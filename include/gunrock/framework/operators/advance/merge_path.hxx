@@ -11,15 +11,12 @@
 
 #pragma once
 
+
+#include <cassert>
 #include <gunrock/util/math.hxx>
 #include <gunrock/cuda/context.hxx>
 
 #include <gunrock/framework/operators/configs.hxx>
-
-// XXX: Replace these later
-#include <moderngpu/transform.hxx>
-#include <moderngpu/kernel_scan.hxx>
-#include <moderngpu/kernel_load_balance.hxx>
 
 namespace gunrock {
 namespace operators {
@@ -108,9 +105,7 @@ void execute(graph_t& G,
   int end = (input_type == advance_io_type_t::graph)
                 ? G.get_number_of_vertices()
                 : input->get_number_of_elements();
-  mgpu::transform_lbs(neighbors_expand, size_of_output,
-                      thrust::raw_pointer_cast(segments.data()), end,
-                      *(context.mgpu()));
+  assert(false);
 }
 }  // namespace merge_path
 }  // namespace advance

@@ -17,8 +17,6 @@
 
 #include <gunrock/framework/operators/configs.hxx>
 
-#include <moderngpu/kernel_segreduce.hxx>
-
 // #define LBS_SEGREDUCE 1
 
 namespace gunrock {
@@ -78,10 +76,7 @@ void execute(graph_t& G,
 
 #ifndef LBS_SEGREDUCE
     // TODO: Throw an exception if input_t is not advance_io_type_t::graph.
-    mgpu::transform_segreduce(op, G.get_number_of_edges(), G.get_row_offsets(),
-                              G.get_number_of_vertices(), output, arithmetic_op,
-                              init_value, *(context0->mgpu()));
-
+    assert(false);
 #else
 
     auto f = [=] __device__(std::size_t index, std::size_t seg,
@@ -93,9 +88,7 @@ void execute(graph_t& G,
     };
 
     // TODO: Throw an exception if input_t is not advance_io_type_t::graph.
-    mgpu::lbs_segreduce(f, G.get_number_of_edges(), G.get_row_offsets(),
-                        G.get_number_of_vertices(), output, arithmetic_op,
-                        init_value, *(context0->mgpu()));
+    assert(false);
 #endif
   }
 }

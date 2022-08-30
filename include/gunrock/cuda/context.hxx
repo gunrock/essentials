@@ -22,7 +22,6 @@
 #include <gunrock/container/array.hxx>
 #include <gunrock/container/vector.hxx>
 
-#include <moderngpu/context.hxx>
 #include <thrust/execution_policy.h>
 
 namespace gunrock {
@@ -43,7 +42,6 @@ struct context_t {
   virtual void print_properties() = 0;
   virtual gcuda::compute_capability_t ptx_version() const = 0;
   virtual gcuda::stream_t stream() = 0;
-  virtual mgpu::standard_context_t* mgpu() = 0;
 
   // hipStreamSynchronize or hipDeviceSynchronize for stream 0.
   virtual void synchronize() = 0;
@@ -60,13 +58,6 @@ class standard_context_t : public context_t {
   gcuda::stream_t _stream;
   gcuda::event_t _event;
 
-  /**
-   * @todo Find out how to use a shared_ptr<> without printing the GPU debug
-   * information. Currently, we are not releasing this pointer, which causes a
-   * memory leak. Fix this later.
-   */
-  mgpu::standard_context_t* _mgpu_context;
-
   util::timer_t _timer;
 
   // Making this a template argument means we won't generate an instance
@@ -82,18 +73,16 @@ class standard_context_t : public context_t {
     hipStreamCreateWithFlags(&_stream, hipStreamNonBlocking);
     hipEventCreateWithFlags(&_event, hipEventDisableTiming);
     hipGetDeviceProperties(&_props, _ordinal);
-
-    _mgpu_context = new mgpu::standard_context_t(false, _stream);
   }
 
  public:
   standard_context_t(gcuda::device_id_t device = 0)
-      : context_t(), _ordinal(device), _mgpu_context(nullptr) {
+      : context_t(), _ordinal(device) {
     init();
   }
 
   standard_context_t(hipStream_t stream, gcuda::device_id_t device = 0)
-      : context_t(), _ordinal(device), _mgpu_context(nullptr), _stream(stream) {
+      : context_t(), _ordinal(device), _stream(stream) {
     init();
   }
 
@@ -113,7 +102,6 @@ class standard_context_t : public context_t {
   }
 
   virtual gcuda::stream_t stream() override { return _stream; }
-  virtual mgpu::standard_context_t* mgpu() override { return _mgpu_context; }
 
   virtual void synchronize() override {
     error::error_t status =
