@@ -12,7 +12,7 @@
 
 #include <iostream>
 #include <memory>
-#include <cuda.h>
+#include <hip/hip_runtime.h>
 #include <gunrock/error.hxx>
 
 namespace gunrock {
@@ -110,11 +110,11 @@ struct virtual_memory_t {
 
   virtual_memory_t(std::size_t padded_size)
       : size(padded_size), alignment(0), addr(0), flags(0) {
-    cuMemAddressReserve((CUdeviceptr*)&ptr, size, alignment, (CUdeviceptr)addr,
+    cuMemAddressReserve((hipDeviceptr_t*)&ptr, size, alignment, (hipDeviceptr_t)addr,
                         flags);
   }
 
-  ~virtual_memory_t() { cuMemAddressFree((CUdeviceptr)ptr, size); }
+  ~virtual_memory_t() { cuMemAddressFree((hipDeviceptr_t)ptr, size); }
 };
 
 /**
@@ -162,7 +162,7 @@ class striped_memory_mapper_t {
     const size_t stripe_size = phys.stripe_size;
 
     for (auto& device : phys.resident_devices)
-      cuMemMap((CUdeviceptr)virt.ptr + (stripe_size * device), stripe_size, 0,
+      cuMemMap((hipDeviceptr_t)virt.ptr + (stripe_size * device), stripe_size, 0,
                phys.alloc_handle[device], 0);
 
     std::vector<CUmemAccessDesc> access_descriptors(mapping_devices.size());
@@ -191,12 +191,12 @@ class striped_memory_mapper_t {
           access_descriptors[remote].flags = CU_MEM_ACCESS_FLAGS_PROT_MAX;
       }
 
-      cuMemSetAccess((CUdeviceptr)virt.ptr + (stripe_size * local), stripe_size,
+      cuMemSetAccess((hipDeviceptr_t)virt.ptr + (stripe_size * local), stripe_size,
                      access_descriptors.data(), access_descriptors.size());
     }
   }
 
-  ~striped_memory_mapper_t() { cuMemUnmap((CUdeviceptr)virt.ptr, virt.size); }
+  ~striped_memory_mapper_t() { cuMemUnmap((hipDeviceptr_t)virt.ptr, virt.size); }
 
   type_t* data() { return virt.ptr; }
   std::size_t elements_per_partition() {

@@ -28,7 +28,7 @@ void execute(frontier_t* input,
     output->reserve(input->get_number_of_elements());
 
   auto new_end = thrust::unique_copy(
-      thrust::cuda::par.on(context.stream()),  // execution policy
+      thrust::hip::par.on(context.stream()),  // execution policy
       input->begin(),                          // input iterator: begin
       input->end(),                            // input iterator: end
       output->begin()                          // output iterator: begin

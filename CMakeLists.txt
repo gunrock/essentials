@@ -26,7 +26,7 @@ set(ESSENTIALS_VERSION "${ESSENTIALS_VERSION_MAJOR}.${ESSENTIALS_VERSION_MINOR}.
 
 project(essentials
   VERSION ${ESSENTIALS_VERSION}
-  LANGUAGES CXX C CUDA
+  LANGUAGES CXX C CUDA HIP
 )
 
 # begin /* Dependencies directory */
@@ -34,7 +34,7 @@ set(PROJECT_DEPS_DIR externals)
 # end /* Dependencies directory */
 
 # begin /* Include cmake modules */
-include(${PROJECT_SOURCE_DIR}/cmake/FetchThrustCUB.cmake)
+#include(${PROJECT_SOURCE_DIR}/cmake/FetchThrustCUB.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchModernGPU.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchCXXOpts.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/FetchRapidJSON.cmake)
@@ -109,22 +109,25 @@ set(ESSENTIALS_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(essentials
   INTERFACE ${ESSENTIALS_INCLUDE_DIR}
   INTERFACE ${CXXOPTS_INCLUDE_DIR}
-  INTERFACE ${THRUST_INCLUDE_DIR}
-  INTERFACE ${CUB_INCLUDE_DIR}
+  # INTERFACE ${THRUST_INCLUDE_DIR}
+  #INTERFACE ${CUB_INCLUDE_DIR}
   INTERFACE ${MODERNGPU_INCLUDE_DIR}
   INTERFACE ${RAPIDJSON_INCLUDE_DIR}
   INTERFACE ${NHLOMANN_JSON_INCLUDE_DIR}
-  INTERFACE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+  #INTERFACE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
 )
 
 ####################################################
 ############ TARGET LINK LIBRARIES #################
 ####################################################
 target_link_libraries(essentials
-  INTERFACE curand
-  INTERFACE cuda
-  INTERFACE cusparse
+#  INTERFACE curand
+#  INTERFACE cuda
+#  INTERFACE cusparse
+   INTERFACE rocrand
+   INTERFACE hipsparse
 )
+target_link_directories(essentials INTERFACE /opt/rocm/lib)
 
 ####################################################
 ################# TARGET SOURCES ###################

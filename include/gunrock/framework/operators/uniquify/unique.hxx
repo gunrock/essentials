@@ -24,7 +24,7 @@ void execute(frontier_t* input,
              frontier_t* output,
              gcuda::standard_context_t& context) {
   auto new_end = thrust::unique(
-      thrust::cuda::par.on(context.stream()),  // execution policy
+      thrust::hip::par.on(context.stream()),  // execution policy
       input->begin(),                          // input iterator: begin
       input->end()                             // input iterator: end
   );

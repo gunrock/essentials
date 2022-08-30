@@ -21,7 +21,7 @@ void offsets_to_indices(const index_t* offsets,
                         offset_t* indices,
                         index_t const& size_of_indices) {
   using execution_policy_t = std::conditional_t<space == memory_space_t::device,
-                                                decltype(thrust::cuda::par.on(
+                                                decltype(thrust::hip::par.on(
                                                     0)),  // XXX: does this
                                                           // work on stream 0?
                                                 decltype(thrust::host)>;

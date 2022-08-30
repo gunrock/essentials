@@ -44,3 +44,6 @@ externals/*
 
 # Ignore slurm files
 slurm-*.out
+
+# HIP
+*.prehip

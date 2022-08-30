@@ -1,3 +1,4 @@
+#include "hip/hip_runtime.h"
 #pragma once
 
 #include <gunrock/algorithms/algorithms.hxx>
@@ -84,7 +85,7 @@ struct enactor_t : async::enactor_t<problem_t> {
 
     // !! Queues creates it's own streams.  But I think we should at least
     //    synchronizing the to the `context` stream?
-    _push_one<<<1, 1>>>(q, P->param.single_source);
+    hipLaunchKernelGGL(_push_one, 1, 1, 0, 0, q, P->param.single_source);
   }
 
   // !! Breaks w/ standard essentials (mildly...)

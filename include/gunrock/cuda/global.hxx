@@ -10,6 +10,8 @@
  */
 
 #pragma once
+#include <hip/hip_runtime.h>
+
 namespace gunrock {
 namespace gcuda {
 

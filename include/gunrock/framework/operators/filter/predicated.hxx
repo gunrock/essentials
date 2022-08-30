@@ -27,7 +27,7 @@ void execute(graph_t& G,
 
   // Copy w/ predicate!
   auto new_length = thrust::copy_if(
-      thrust::cuda::par.on(context.stream()),  // execution policy
+      thrust::hip::par.on(context.stream()),  // execution policy
       input->begin(),                          // input iterator: begin
       input->end(),                            // input iterator: end
       output->begin(),                         // output iterator
